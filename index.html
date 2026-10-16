@@ -283,7 +283,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'v2.22';
+const VERSION = 'v2.23';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -714,11 +714,12 @@ function applyTheme(){
 }
 let iconFor = '';
 function makeIcon(color){
+  color = '#2BB3A3';   // v2.23：主畫面圖示固定湖水綠，不跟主題變
   if (iconFor === color) return; iconFor = color;
   const c = document.createElement('canvas'); c.width = c.height = 180; const x = c.getContext('2d');
   x.fillStyle = color; x.fillRect(0, 0, 180, 180);
   x.fillStyle = '#fff'; x.font = 'bold 104px -apple-system,Arial'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('$', 90, 96);
-  const u = c.toDataURL('image/png'); $('#touchIcon').href = u; $('#favIcon').href = u;
+  const u = c.toDataURL('image/png'); $('#touchIcon').href = 'icon-192.png'; $('#favIcon').href = u;
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { applyTheme(); });
 
