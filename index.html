@@ -332,7 +332,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'v2.40';
+const VERSION = 'v2.41';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -846,7 +846,7 @@ function render(){
   $('#app').className = cols ? 'cols' : '';
   $('#app').innerHTML = cols ? `<div class="colw">${v()}</div>` : v();
   renderNav(); NAVCUR = navSnap();
-  if (NAVSTK.length && S.ui.tab !== 'acct') { const t = $('#app .top'); if (t && t.firstElementChild) { const h = t.firstElementChild, w = document.createElement('div');
+  if (NAVSTK.length && NAVSTK[NAVSTK.length - 1].link && S.ui.tab !== 'acct') { const t = $('#app .top'); if (t && t.firstElementChild) { const h = t.firstElementChild, w = document.createElement('div');
     w.style.cssText = 'display:flex;align-items:center;gap:2px;min-width:0'; w.innerHTML = `<button class="ib" onclick="goBack()" aria-label="返回">${ic('left',24)}</button>`; t.insertBefore(w, h); w.appendChild(h); } }
   if (S.ui.tab === 'carrier') drawBarcode();
   if (S.ui.tab === 'accounts' && S.ui.sorting) mountSort();
@@ -866,9 +866,10 @@ let NAVSTK = [], NAVCUR = null;
 const navSnap = () => ({tab:S.ui.tab, acct:S.ui.acct, am:S.ui.am ? {...S.ui.am} : null, rp:{...S.ui.rp}, sel:S.ui.sel, y:scrollY});
 function navPush(tab){
   const c = NAVCUR; if (!c || !S.ready) return;
-  if (c.tab !== tab || (tab === 'reports' && c.rp.seg !== S.ui.rp.seg) || (tab === 'home' && c.sel !== S.ui.sel) || (tab === 'acct' && c.acct !== S.ui.acct)) { NAVSTK.push({...c, y:scrollY}); if (NAVSTK.length > 20) NAVSTK.shift(); }
+  if (c.tab !== tab || (tab === 'reports' && c.rp.seg !== S.ui.rp.seg) || (tab === 'home' && c.sel !== S.ui.sel) || (tab === 'acct' && c.acct !== S.ui.acct)) { NAVSTK.push({...c, y:scrollY, link:!NAVTAB}); if (NAVSTK.length > 30) NAVSTK.shift(); }
 }
-function navTab(tab){ NAVSTK = []; go(tab, true); }
+let NAVTAB = false;
+function navTab(tab){ if (tab === S.ui.tab) { scrollTo(0, 0); return; } NAVTAB = true; navPush(tab); NAVTAB = false; go(tab, true); }   // v2.41：底部選單切頁也記，返回回上一頁
 function go(tab, noPush){ if (tab === 'carrier' && !FEAT.carrier) tab = 'home'; if (!noPush) navPush(tab); if (LOCK_PENDING && tab !== 'carrier') { LOCK_PENDING = false; LOCKED = true; PIN_IN = ''; drawLock(); } S.ui.tab = tab; S.ui.sorting = false; if (tab === 'carrier') history.replaceState(null, '', '#carrier'); else if (location.hash) history.replaceState(null, '', location.pathname + location.search); render(); scrollTo(0, 0); }
 
 /* ---------- home ---------- */
@@ -2130,7 +2131,7 @@ function setSrGoal(){
   if (v === null) return; const n = parseFloat(v); putSettings({srGoal:n > 0 && n < 100 ? n : null});
 }
 /* ===== v2.34 比較頁（上一期／去年同期） ===== */
-let CMP = {per:'month', base:'prev', from:'', to:'', off:0};
+let CMP = {per:'month', base:'prev', from:'', to:'', off:0, ty:'expense'};
 const addY = (s, k) => addM(s, 12 * k), fD = s => `${s.replace(/-/g, '/')}（${WD[pd(s).getDay()]}）`;
 function cmpRanges(){
   const td = today(), d = pd(td), o = Math.min(0, CMP.off || 0); let a0, a1 = td, cur = o === 0, lbl = '';
@@ -2163,7 +2164,7 @@ function cmpPick(){
   openLayer('cmpk', () => sheet('cmpk', per === 'month' ? '選月份' : per === 'week' ? '選一天（看那一週）' : '選年份', `<div class="fld">${inp}</div>`), 'btm');
 }
 /* 比較頁左右滑動切換期間 */
-function cmpMount(el){ let x0 = null, y0 = 0; el.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, {passive:true});
+function cmpMount(el){ let x0 = null, y0 = 0; el.addEventListener('touchstart', e => { if (e.touches[0].clientX <= 30) return; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, {passive:true});
   el.addEventListener('touchend', e => { if (x0 === null || CMP.per === 'custom') return; const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
     if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) cmpShift(dx > 0 ? -1 : 1); }, {passive:true}); }
 function openCmp(){ CMP.off = 0; openLayer('cmp', renderCmp, 'full', cmpMount); }
@@ -2173,15 +2174,16 @@ function renderCmp(){
   const sr = x => x.inc ? (x.inc - x.exp) / x.inc * 100 : 0, dif = (a, b, good) => { const d = a - b, p = b ? d / Math.abs(b) * 100 : null, c = Math.abs(d) < 1 ? 'tx2' : (d > 0) === good ? 'inc' : 'exp';
     return `<td class="${c}">${d > 0 ? '+' : d < 0 ? '−' : ''}${twd(Math.abs(d))}</td><td class="${c}">${p === null ? '—' : (p > 0 ? '+' : p < 0 ? '−' : '') + Math.abs(p).toFixed(0) + '%'}</td>`; };
   const row = (l, a, b, good, isP) => `<tr><td>${l}</td><td>${isP ? a.toFixed(0) + '%' : twd(a)}</td><td>${noB ? '—' : isP ? b.toFixed(0) + '%' : twd(b)}</td>${noB ? '<td>—</td><td>—</td>' : isP ? `<td class="${a >= b ? 'inc' : 'exp'}">${a >= b ? '+' : '−'}${Math.abs(a - b).toFixed(0)} 點</td><td></td>` : dif(a, b, good)}</tr>`;
-  const tA = catTotals(a0, a1, 'expense'), tB = noB ? {} : catTotals(b0, b1, 'expense'), ks = [...new Set([...Object.keys(tA), ...Object.keys(tB)])].map(k => ({k, a:tA[k] || 0, b:tB[k] || 0})).sort((x, y) => (y.a - y.b) - (x.a - x.b));
+  const TY = CMP.ty === 'income' ? 'income' : 'expense', isI = TY === 'income', tyL = isI ? '收入' : '支出', tyC = isI ? 'var(--inc)' : 'var(--exp)';
+  const tA = catTotals(a0, a1, TY), tB = noB ? {} : catTotals(b0, b1, TY), ks = [...new Set([...Object.keys(tA), ...Object.keys(tB)])].map(k => ({k, a:tA[k] || 0, b:tB[k] || 0})).sort((x, y) => isI ? (x.a - x.b) - (y.a - y.b) : (y.a - y.b) - (x.a - x.b));
   const mx = Math.max(1, ...ks.flatMap(x => [x.a, x.b]));
   const cats = ks.map(x => { const c = S.data.categories[x.k], d = x.a - x.b;
-    return `<button class="row" onclick="openCatRpt('${x.k}','${a0}','${a1}','expense')"><span class="cic" style="background:${c?.color || '#aaa'}">${ic(c?.icon || 'more',20)}</span><span class="mid"><b>${esc(c?.name || '未分類')}</b>
+    return `<button class="row" onclick="openCatRpt('${x.k}','${a0}','${a1}','${TY}')"><span class="cic" style="background:${c?.color || '#aaa'}">${ic(c?.icon || 'more',20)}</span><span class="mid"><b>${esc(c?.name || '未分類')}</b>
       <div class="cbar" style="width:${x.a / mx * 100}%;background:${c?.color || '#aaa'}"></div><div class="cbar" style="width:${x.b / mx * 100}%;background:var(--tx2);opacity:.45"></div>
-      <small>本期 ${twd(x.a)}・比較期 ${noB ? '—' : twd(x.b)}</small></span><span class="amt ${noB || Math.abs(d) < 1 ? 'tx2' : d > 0 ? 'exp' : 'inc'}">${noB ? '' : (d > 0 ? '+' : d < 0 ? '−' : '') + twd(Math.abs(d))}</span></button>`; }).join('');
+      <small>本期 ${twd(x.a)}・比較期 ${noB ? '—' : twd(x.b)}</small></span><span class="amt ${noB || Math.abs(d) < 1 ? 'tx2' : (d > 0) !== isI ? 'exp' : 'inc'}">${noB ? '' : (d > 0 ? '+' : d < 0 ? '−' : '') + twd(Math.abs(d))}</span></button>`; }).join('');
   /* 累計支出曲線：本期 vs 比較期（第 1 天對第 1 天） */
   const la = diffD(a1, a0) + 1, lb = diffD(b1, b0) + 1, n = Math.max(la, lb), cumA = [], cumB = []; let sa = 0, sb = 0;
-  for (let i = 0; i < n; i++) { if (i < la) { const x = addD(a0, i); sa += summary(x, x).exp; cumA.push(sa); } if (i < lb && !noB) { const x = addD(b0, i); sb += summary(x, x).exp; cumB.push(sb); } }
+  for (let i = 0; i < n; i++) { if (i < la) { const x = addD(a0, i); sa += summary(x, x)[isI ? 'inc' : 'exp']; cumA.push(sa); } if (i < lb && !noB) { const x = addD(b0, i); sb += summary(x, x)[isI ? 'inc' : 'exp']; cumB.push(sb); } }
   const W = 340, H = 200, pb = 42, pt = 14, g = W / Math.max(1, n - 1), M = Math.max(1, ...cumA, ...cumB), yv = v => pt + (M - v) / M * (H - pb - pt), pl = (v, c, dash) => v.length ? `<polyline points="${v.map((x, i) => `${i * g},${yv(x)}`).join(' ')}" fill="none" stroke="${c}" stroke-width="${dash ? 2 : 2.6}" ${dash ? 'stroke-dasharray="5 4"' : ''} stroke-linejoin="round"/>` : '';
   const step = Math.max(1, Math.ceil(n / 7)); let ax = '';
   for (let i = 0; i < n; i += step) { const x = addD(a0, i), tx = i * g + 3, ty = H - pb + 12; ax += `<text x="${tx}" y="${ty}" text-anchor="end" font-size="10" transform="rotate(-45 ${tx} ${ty})" style="fill:var(--tx2)">${x.slice(5).replace('-', '/')}</text>`; }
@@ -2196,12 +2198,13 @@ function renderCmp(){
         ${noB ? '<div class="sm exp" style="margin-top:6px">比較期沒有資料（記帳從 ' + fst.replace(/-/g, '/') + ' 開始）</div>' : ''}
         <table class="tbl cmpt" style="margin-top:8px"><tr><th></th><th>本期</th><th>比較期</th><th>差額</th><th>%</th></tr>
         ${row('收入', A.inc, B.inc, true)}${row('支出', A.exp, B.exp, false)}${row('結餘', A.inc - A.exp, B.inc - B.exp, true)}${row('儲蓄率' + (S.settings.srGoal ? `<br><small class="tx2">目標 ${S.settings.srGoal}%</small>` : ''), sr(A), sr(B), true, true)}</table></div>
-      <div class="card"><div class="sec" style="margin:0 0 4px;padding:0"><h3>累計支出</h3><span class="sm tx2">第 1 天對第 1 天</span></div>
-        <div class="chart"><svg viewBox="-22 0 ${W + 22} ${H}"><line x1="0" x2="${W}" y1="${yv(0)}" y2="${yv(0)}" style="stroke:var(--line)"/>${pl(cumB, 'var(--tx2)', 1)}${pl(cumA, 'var(--exp)')}${ax}<text x="2" y="10" font-size="10" style="fill:var(--tx2)">${twd(M)}</text></svg></div>
-        <div class="lg2"><button><i style="background:var(--exp)"></i>本期</button><button><i style="background:repeating-linear-gradient(90deg,var(--tx2) 0 4px,transparent 4px 7px)"></i>比較期</button></div>
-        <div class="sm" style="margin-top:6px">到 ${fD(a1)}：本期 <b class="exp">${twd(sa)}</b>${noB ? '' : `・比較期同期 <b>${twd(sameB)}</b>${sameB ? cmpTxt(pct(sa, sameB), '') : ''}`}</div></div>
-      <div class="sec"><h3>各分類支出</h3><span class="sm tx2">多花的排前面</span></div>
-      <div class="list">${cats || '<div class="empty">這段期間沒有支出</div>'}</div>
+      <div class="segw" style="margin-top:10px"><div class="seg ${isI ? 'inc' : 'exp'}"><button class="${!isI ? 'on' : ''}" onclick="CMP.ty='expense';redraw('cmp')">支出</button><button class="${isI ? 'on' : ''}" onclick="CMP.ty='income';redraw('cmp')">收入</button></div></div>
+      <div class="card"><div class="sec" style="margin:0 0 4px;padding:0"><h3>累計${tyL}</h3><span class="sm tx2">第 1 天對第 1 天</span></div>
+        <div class="chart"><svg viewBox="-22 0 ${W + 22} ${H}"><line x1="0" x2="${W}" y1="${yv(0)}" y2="${yv(0)}" style="stroke:var(--line)"/>${pl(cumB, 'var(--tx2)', 1)}${pl(cumA, tyC)}${ax}<text x="2" y="10" font-size="10" style="fill:var(--tx2)">${twd(M)}</text></svg></div>
+        <div class="lg2"><button><i style="background:${tyC}"></i>本期</button><button><i style="background:repeating-linear-gradient(90deg,var(--tx2) 0 4px,transparent 4px 7px)"></i>比較期</button></div>
+        <div class="sm" style="margin-top:6px">到 ${fD(a1)}：本期 <b class="${isI ? 'inc' : 'exp'}">${twd(sa)}</b>${noB ? '' : `・比較期同期 <b>${twd(sameB)}</b>${sameB ? (q => `<span class="cmp" style="color:${(q > 0) === isI ? 'var(--acc)' : 'var(--exp)'}"> ${q > 0 ? '+' : '−'}${Math.abs(q).toFixed(0)}%</span>`)(pct(sa, sameB)) : ''}`}</div></div>
+      <div class="sec"><h3>各分類${tyL}</h3><span class="sm tx2">${isI ? '少收的排前面' : '多花的排前面'}</span></div>
+      <div class="list">${cats || `<div class="empty">這段期間沒有${tyL}</div>`}</div>
       <div style="height:30px"></div></div></div>`;
 }
 function sparkline(v){ const W = 100, H = 30, mx = Math.max(1, ...v), g = W / Math.max(1, v.length - 1);
@@ -2567,7 +2570,7 @@ function delWish(){ if (!confirm('刪除這項？')) return; putSettings({wish:w
 /* ===== v2.40 總覽子層：每月收支明細（依年份，左右滑換年） ===== */
 let OT = {y:0};
 const ymG = (y, m) => `${y}/${p2(m + 1)}`;
-function swipeOn(el, sel, fn){ let x0 = null, y0 = 0; el.addEventListener('touchstart', e => { if (sel && !e.target.closest(sel)) return; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, {passive:true});
+function swipeOn(el, sel, fn){ let x0 = null, y0 = 0; el.addEventListener('touchstart', e => { if (sel && !e.target.closest(sel)) return; if (e.touches[0].clientX <= 30) return; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, {passive:true});
   el.addEventListener('touchend', e => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null; if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) fn(dx > 0 ? -1 : 1); }, {passive:true}); }
 function yearBar(y, shift, pick, extra){ const ny = new Date().getFullYear();
   return `<div class="rbar"><span>${extra || ''}</span><div class="nav2"><button onclick="${shift}(-1)">${ic('left',20)}</button><span class="ymt" onclick="${pick}()">${y} 年 ▾</span><button onclick="${shift}(1)" ${y >= ny ? 'disabled style="opacity:.3"' : ''}>${ic('right',20)}</button></div></div>`; }
@@ -2578,10 +2581,10 @@ function renderOvTbl(){
   const n = new Date(), last = OT.y === n.getFullYear() ? n.getMonth() : 11, ms = [...Array(last + 1)].map((_, m) => monthStat(OT.y, m)).reverse(), g = S.settings.srGoal;
   const T = ms.reduce((o, x) => ({inc:o.inc + x.inc, exp:o.exp + x.exp}), {inc:0, exp:0}), net = T.inc - T.exp;
   const srC = (x) => x.inc && g && (x.inc - x.exp) / x.inc * 100 >= g ? 'var(--acc)' : 'var(--tx2)';
-  return `<div class="lin"><div class="lhd"><button class="ib" onclick="closeLayer('ovt')">${ic('left',24)}</button><h2>每月收支明細</h2><button class="sm" style="color:var(--acc);font-weight:600;padding:0 8px" onclick="CMP.per='month';CMP.base='prev';openCmp()">比較 ›</button></div>
+  return `<div class="lin"><div class="lhd"><button class="ib" onclick="closeLayer('ovt')">${ic('left',24)}</button><h2>每月收支明細</h2><span style="width:40px"></span></div>
     ${yearBar(OT.y, 'otShift', 'otPick')}
     <div class="fscroll"><div class="card mt0" style="padding:12px 16px"><table class="tbl"><tr><th>月份</th><th>收入</th><th>支出</th><th>結餘</th><th>儲蓄率</th></tr>
-      ${ms.map(x => `<tr onclick="closeLayer('ovt',true);S.ui.rp={...S.ui.rp,y:${x.y},m:${x.m},ov:'m'};render()" style="cursor:pointer"><td>${ymG(x.y, x.m)}</td><td class="inc">${twd(x.inc)}</td><td class="exp">${twd(x.exp)}</td><td class="${x.net < 0 ? 'exp' : ''}">${twd(x.net)}</td><td style="color:${srC(x)}">${x.inc ? (x.net / x.inc * 100).toFixed(0) + '%' : '—'}</td></tr>`).join('')}
+      ${ms.map(x => `<tr onclick="closeLayer('ovt',true);S.ui.rp={...S.ui.rp,y:${x.y},m:${x.m},ov:'m'};render()" style="cursor:pointer"><td>${x.m + 1} 月</td><td class="inc">${twd(x.inc)}</td><td class="exp">${twd(x.exp)}</td><td class="${x.net < 0 ? 'exp' : ''}">${twd(x.net)}</td><td style="color:${srC(x)}">${x.inc ? (x.net / x.inc * 100).toFixed(0) + '%' : '—'}</td></tr>`).join('')}
       <tr style="font-weight:700"><td>合計</td><td class="inc">${twd(T.inc)}</td><td class="exp">${twd(T.exp)}</td><td class="${net < 0 ? 'exp' : ''}">${twd(net)}</td><td style="color:${srC(T)}">${T.inc ? (net / T.inc * 100).toFixed(0) + '%' : '—'}</td></tr></table></div>
     <div class="hint">點月份看那個月的每天明細${g ? `・儲蓄率達目標 ${g}% 顯示綠字` : ''}・左右滑換年份</div><div style="height:30px"></div></div></div>`;
 }
