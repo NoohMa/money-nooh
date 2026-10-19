@@ -186,10 +186,6 @@ textarea.note{display:block;width:calc(100% - 32px);margin:0 16px 8px;border:0;b
 .thm button.on{border-color:var(--pri)}
 .thm .dots{display:flex;justify-content:center;gap:4px;margin-bottom:6px}
 .thm .dots i{width:16px;height:16px;border-radius:50%}
-/* carrier */
-.bc{background:#fff;border-radius:20px;margin:16px;padding:22px 10px;text-align:center;box-shadow:var(--sh)}
-.bc svg{width:100%;height:auto;max-height:150px}
-.bc .code{color:#111;font-size:28px;font-weight:800;letter-spacing:4px;margin-top:8px;font-family:ui-monospace,Menlo,monospace}
 .hint{margin:6px 22px;font-size:13px;color:var(--tx2);line-height:1.6}
 /* cat manager */
 .cm-main{background:var(--bg);border-radius:16px;padding:10px;margin-bottom:10px}
@@ -290,7 +286,6 @@ body{zoom:var(--z)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 <script src="config.js"></script>
 </head>
@@ -323,8 +318,8 @@ body{zoom:var(--z)}
      }
    }
    ========================================================= */
-// 功能開關：可在 config.js 用 window.MONEY_OPTIONS = {carrier:false} 關閉載具
-const FEAT = {carrier:true, ...(window.MONEY_OPTIONS || {})};
+// 功能開關：可在 config.js 用 window.MONEY_OPTIONS 設定（v2.5 起載具功能已移除）
+const FEAT = {...(window.MONEY_OPTIONS || {})};
 // 雲端設定放在同資料夾的 config.js（換人使用時只要改那個檔）
 const FIREBASE_CONFIG = (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey) ? window.FIREBASE_CONFIG : null;
 /* 範例：
@@ -337,7 +332,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'v2.4';
+const VERSION = 'v2.5';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -398,7 +393,6 @@ const ICONS = {
   swap:'M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7',
   plus:'M12 5v14M5 12h14', chart:'M4 4v16h16M8 15l4-4 3 3 5-6', minus:'M5 12h14', cart:'M3 4h2.5l2.2 10.5h10.1L20 7.5H6.4M9.5 19.5h.01M16.5 19.5h.01',
   homeNav:'M4 10l8-6 8 6v10h-5v-6H9v6H4z',
-  barcode:'M4 5v14M7 5v14M10 5v10M13 5v14M16 5v10M19 5v14',
   gear:'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1',
   left:'M15 6l-6 6 6 6', right:'M9 6l6 6-6 6', down:'M6 9l6 6 6-6',
   cal:'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
@@ -470,14 +464,15 @@ function defaultData(){
 const S = {
   mode:'local', user:null, ledgerId:null, ready:false,
   data:{accounts:{}, txns:{}, categories:{}, projects:{}, recurring:{}, templates:{}, plans:{}},
-  settings:{theme:'rose', custom:{pri:'#C0707C', acc:'#2A8378'}, carrier:'', rateOverride:{}},
+  settings:{theme:'rose', custom:{pri:'#C0707C', acc:'#2A8378'}, rateOverride:{}},
   ui:{tab:'home', sel:today(), acct:null, sorting:false, showArch:false, rp:{seg:'over', ov:'6', per:'month', type:'expense', y:new Date().getFullYear(), m:new Date().getMonth()}}
 };
 // 同一網域放多份 Money（例如 GitHub Pages 的不同倉庫）時，各自的設定分開存，不互相干擾
 const STORE_NS = (() => { const d = location.pathname.replace(/[^/]*$/, ''); return d === '/' ? '' : '@' + d; })();
 const PREF_KEY = 'money_prefs' + STORE_NS, LOCAL_KEY = 'money_local_v1' + STORE_NS, RATE_KEY = 'money_rates';
-let P = {mode:'time', darkFrom:'22:00', darkTo:'08:00', lastCat:{}, lastAcc:null, carrier:''};
+let P = {mode:'time', darkFrom:'22:00', darkTo:'08:00', lastCat:{}, lastAcc:null};
 try { Object.assign(P, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch(e){}
+if ('carrier' in P) { delete P.carrier; try { localStorage.setItem(PREF_KEY, JSON.stringify(P)); } catch(e){} }   // v2.5：載具移除，清掉本機舊號碼
 const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(P)); } catch(e){} };
 let RATES = {at:0, r:{}};
 try { RATES = JSON.parse(localStorage.getItem(RATE_KEY)) || RATES; } catch(e){}
@@ -513,8 +508,7 @@ function colorSave(k, v){ colorPrev(k, v); clearTimeout(colorT); colorT = setTim
 function colorDone(){ setTimeout(() => { if (!document.activeElement || document.activeElement.type !== 'color') render(); }, 500); }
 function setNickname(){ const v = prompt('顯示名稱', S.settings.nickname || ''); if (v === null) return; putSettings({nickname:v.trim().slice(0, 20)}); }
 function putSettings(patch){
-  S.settings = {...S.settings, ...patch};
-  if ('carrier' in patch) { P.carrier = patch.carrier; savePrefs(); }
+  S.settings = {...S.settings, ...patch}; delete S.settings.carrier;   // v2.5：載具移除，存設定時一併清掉舊欄位
   if (S.mode === 'cloud') { const st = S.settings; cloudWrite(L => L.collection('meta').doc('settings').set(clean(st))); bump(); }
   else { saveLocal(); bump(); }
   applyTheme(); render();
@@ -846,14 +840,13 @@ const sheet = (key, title, body) => `<div class="bd" onclick="closeLayer('${key}
 function render(){
   if (S.mode === 'cloud' && !S.user) { $('#nav').innerHTML = ''; if (!AUTH_KNOWN) { $('#app').innerHTML = '<div class="empty" style="padding-top:40vh">載入中…</div>'; return; } return renderLogin(); }
   if (!S.ready) { $('#app').innerHTML = '<div class="empty" style="padding-top:40vh">載入中…</div>'; return; }
-  const v = {home:viewHome, accounts:viewAccounts, acct:viewAcct, carrier:viewCarrier, settings:viewSettings, reports:viewReports}[S.ui.tab] || viewHome;
+  const v = {home:viewHome, accounts:viewAccounts, acct:viewAcct, settings:viewSettings, reports:viewReports}[S.ui.tab] || viewHome;
   const cols = ['reports', 'accounts', 'settings', 'acct'].includes(S.ui.tab);
   $('#app').className = cols ? 'cols' : '';
   $('#app').innerHTML = cols ? `<div class="colw">${v()}</div>` : v();
   renderNav(); NAVCUR = navSnap();
   if (NAVSTK.length && NAVSTK[NAVSTK.length - 1].link && S.ui.tab !== 'acct') { const t = $('#app .top'); if (t && t.firstElementChild) { const h = t.firstElementChild, w = document.createElement('div');
     w.style.cssText = 'display:flex;align-items:center;gap:2px;min-width:0'; w.innerHTML = `<button class="ib" onclick="goBack()" aria-label="返回">${ic('left',24)}</button>`; t.insertBefore(w, h); w.appendChild(h); } }
-  if (S.ui.tab === 'carrier') drawBarcode();
   if (S.ui.tab === 'accounts' && S.ui.sorting) mountSort();
   if (S.ui.tab === 'home') mountSwipe();
 }
@@ -875,7 +868,7 @@ function navPush(tab){
 }
 let NAVTAB = false;
 function navTab(tab){ if (tab === S.ui.tab) { scrollTo(0, 0); return; } NAVTAB = true; navPush(tab); NAVTAB = false; go(tab, true); }   // v2.41：底部選單切頁也記，返回回上一頁
-function go(tab, noPush){ if (tab === 'carrier' && !FEAT.carrier) tab = 'home'; if (!noPush) navPush(tab); if (LOCK_PENDING && tab !== 'carrier') { LOCK_PENDING = false; LOCKED = true; PIN_IN = ''; drawLock(); } S.ui.tab = tab; S.ui.sorting = false; if (tab === 'carrier') history.replaceState(null, '', '#carrier'); else if (location.hash) history.replaceState(null, '', location.pathname + location.search); render(); scrollTo(0, 0); }
+function go(tab, noPush){ if (!noPush) navPush(tab); S.ui.tab = tab; S.ui.sorting = false; if (location.hash) history.replaceState(null, '', location.pathname + location.search); render(); scrollTo(0, 0); }
 
 /* ---------- home ---------- */
 function catOf(id){ return S.data.categories[id]; }
@@ -986,7 +979,7 @@ function viewHome(){
   const [pmY, pmM] = prevYM(y, m), mPrev = summary(ds(new Date(pmY, pmM, 1)), sameDayCut(pmY, pmM, sel)), mNow = summary(mFrom, sel);
   return `<div class="top"><div><div class="brand">${esc(S.settings.nickname || 'MONEY')}</div><h1 style="cursor:pointer" onclick="openYM('home')">${y} 年 ${m+1} 月 <span style="font-size:14px;color:var(--tx2)">▾</span></h1></div>
     <div style="display:flex;gap:4px">${sel !== td ? `<button class="ib" onclick="selDay('${td}')" style="font-size:13px;width:auto;padding:0 10px;color:var(--acc)">今天</button>` : ''}
-    <button class="ib" onclick="openSearch()">${ic('search',22)}</button>${FEAT.carrier ? `<button class="ib" onclick="go('carrier')">${ic('barcode',22)}</button>` : ''}<button class="ib" onclick="openMonthCal()">${ic('cal',22)}</button></div></div>
+    <button class="ib" onclick="openSearch()">${ic('search',22)}</button><button class="ib" onclick="openMonthCal()">${ic('cal',22)}</button></div></div>
     <div class="hcols"><div class="hc1">${alerts()}${monthReportCard()}
     <div class="week" id="week"><button class="arr" onclick="selDay('${addD(sel,-7)}')">${ic('left',20)}</button><div class="days">${days}</div><button class="arr" onclick="selDay('${addD(sel,7)}')">${ic('right',20)}</button></div>
     <div class="card"><div class="sum3">
@@ -2756,7 +2749,11 @@ function ptResHtml(){
   const tog = i => `PI._open=PI._open===${i}?null:${i};ptRefresh()`;
   let head, tbl;
   if (!r.card) {
-    head = `<div class="card mt0"><div class="sm tx2">${esc(a.name)} 目前 ${twd(r.T.b0)}</div><div style="font-size:18px;font-weight:700;margin-top:4px" class="${r.bad ? 'exp' : ''}">${esc(r.txt)}</div></div>`;
+    const sv = ptSave1(w, r);
+    head = `<div class="card mt0"><div class="sm tx2">${esc(a.name)} 目前 ${twd(r.T.b0)}</div><div style="font-size:18px;font-weight:700;margin-top:4px" class="${r.bad ? 'exp' : ''}">${esc(r.txt)}</div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)"><div class="sm">到 ${ptMon(sv.mi)} 每月存 <b>${twd(sv.per)}</b> 就能買</div>
+      ${sv.short >= 1 ? `<div class="sm exp" style="margin-top:2px">照目前預估還差 ${twd(sv.short)}，每月要多存 ${twd(sv.more)}</div>` : ''}
+      <button class="btn sec2" style="padding:9px;margin-top:8px" onclick="ptToGoal()">轉成存錢目標</button></div></div>`;
     tbl = `<table class="tbl"><tr><th>月份</th><th>進</th><th>出</th><th>月底</th></tr>${win.map(i => { const row = r.T.rows[i], buy = row.its.some(o => o.kind === 'this');
       return `<tr onclick="${tog(i)}" style="cursor:pointer;${buy ? 'background:var(--pri-s)' : ''}"><td>${ptMon(i)}${buy ? '<br><small style="color:var(--pri)">買</small>' : ''}</td><td class="inc">${row.inn ? twd(row.inn) : ''}</td><td class="exp">${row.out ? twd(row.out) : ''}</td><td class="b ${row.end < 0 ? 'exp' : ''}">${twd(row.end)}</td></tr>${PI._open === i ? det(row) : ''}`; }).join('')}</table>`;
   } else {
@@ -2772,9 +2769,22 @@ function ptResHtml(){
       <label style="display:flex;align-items:center;gap:10px;margin:-2px 0 10px;font-size:15px"><input id="pqR" type="checkbox" style="width:22px;height:22px;accent-color:var(--acc)" onchange="document.getElementById('pqUW').style.display=this.checked?'':'none'">每月重複</label>
       <div class="fld" id="pqUW" style="display:none"><label>到哪一天為止（可空＝一直重複）</label><input id="pqU" type="date"></div>
       <div class="two"><button class="btn sec2" style="padding:10px" onclick="PI._add='';ptRefresh()">取消</button><button class="btn" style="padding:10px" onclick="ptQuickAdd('${a.type === 'credit' ? (a.payAcct || '') : a.id}')">加入</button></div></div>` : '';
-  const addBlk = !r.card || a.payAcct ? (PI._add ? addF : `<div class="two" style="margin:0 16px 10px"><button class="btn sec2" style="padding:10px" onclick="PI._add='in';ptRefresh()">＋ 預計進帳</button><button class="btn sec2" style="padding:10px" onclick="PI._add='out';ptRefresh()">＋ 預估支出</button></div>`) : '';
+  const addBlk = !r.card ? (PI._add ? addF : `<div class="two" style="margin:0 16px 10px"><button class="btn sec2" style="padding:10px" onclick="PI._add='in';ptRefresh()">＋ 預計進帳</button><button class="btn sec2" style="padding:10px" onclick="PI._add='out';ptRefresh()">＋ 預估支出</button></div>`) : '';
   return `${addBlk}${head}${nav}<div class="card mt0" id="ptTbl" style="padding:10px 12px;margin-top:0">${tbl}</div>
     <div class="sm tx2" style="margin:0 20px">點月份看明細・左右滑看前後・越後面的月份只含已知卡費，還沒刷的消費算不到</div>`;
+}
+/* v2.5：現金／銀行／電子支付 → 每月要存多少（品項金額 ÷ 從本月到想買月份的月數；沒填月份＝最早能買的月份，都不夠＝12 個月） */
+function ptSave1(w, r){
+  const mi = w.ym ? Math.max(0, ptMi(w.ym + '-01')) : (r.bad ? 11 : r.mi), n = mi + 1, amt = +w.amt || 0;
+  let short = 0;
+  if (r.bad) short = w.ym ? Math.max(0, -Math.min(...r.T.rows.slice(mi).map(x => x.end))) : Math.max(0, amt - ptAcctT(w.aid, ptEngine(w.id), []).rows[mi].end);
+  return {mi, n, per:amt / n, short, more:short / n};
+}
+function ptToGoal(){
+  const w = ptValid(); if (!w) return; const a = S.data.accounts[w.aid]; if (!a || a.type === 'credit') return;
+  const sv = ptSave1(w, ptCalc(w)), n = new Date(), e = new Date(n.getFullYear(), n.getMonth() + sv.mi + 1, 0), start = today(); let date = ds(e); if (date <= start) date = addD(start, 1);
+  const g = {id:'g_' + uid(), name:w.name.trim(), target:w.amt, start, date, mode:'acct', aid:a.id};
+  putSettings({goals:[...(S.settings.goals || []), g]}); toast('已建立存錢目標，可到資產頁編輯');
 }
 function ptQuickAdd(aid){
   const n = document.getElementById('pqN').value.trim(), amt = parseFloat(document.getElementById('pqA').value), d = document.getElementById('pqD').value, rep = document.getElementById('pqR').checked, until = rep ? document.getElementById('pqU').value : '', key = PI._add === 'in' ? 'cfIn' : 'cfOut';
@@ -3411,7 +3421,7 @@ async function doJsonImport(){
   toast('還原中…');
   try {
     for (const col of COLS) await bulkPut(col, Object.values(j.data[col] || {}).map(o => ({...o})));
-    if (j.settings) putSettings({...j.settings, carrier:j.settings.carrier || S.settings.carrier, rateOverride:j.settings.rateOverride || {}});
+    if (j.settings) putSettings({...j.settings, rateOverride:j.settings.rateOverride || {}});
     render(); toast(`已還原 ${Object.keys(j.data.txns || {}).length} 筆`);
   } catch(e) { toast('還原失敗：' + (e.code || e.message)); }
 }
@@ -3535,7 +3545,7 @@ async function pinHash(p){
   catch(e) { return 'h' + hashStr('money|' + p); }
 }
 let LOCKED = false, LOCK_PENDING = false, PIN_IN = '', hiddenAt = 0;
-function lockNow(){ if (!P.pin) return; if (S.ui.tab === 'carrier' && !LAYERS.length) { LOCK_PENDING = true; return; } LOCKED = true; PIN_IN = ''; drawLock(); }
+function lockNow(){ if (!P.pin) return; LOCKED = true; PIN_IN = ''; drawLock(); }
 function drawLock(){
   let el = document.getElementById('lock');
   if (!LOCKED) { el && el.remove(); return; }
@@ -3581,27 +3591,6 @@ function backupAlert(){
     <span style="display:flex;gap:10px;flex:none"><button class="b" style="color:var(--acc)" onclick="exportJSON()">備份</button><button class="tx2" onclick="P.backupSnooze=Date.now()+7*864e5;savePrefs();render()">稍後</button></span></div>`;
 }
 
-/* ---------- carrier ---------- */
-function viewCarrier(){
-  const code = S.settings.carrier || P.carrier;
-  return `<div class="top"><button class="ib" onclick="go('home')">${ic('left',24)}</button><h1 style="flex:1">手機條碼載具</h1>${code ? `<button class="ib" onclick="editCarrier()">${ic('edit',22)}</button>` : ''}</div>
-    ${code ? `<div class="bc"><svg id="bcsvg"></svg><div class="code">${esc(code)}</div></div>
-      <div style="margin:0 16px"><button class="btn" style="padding:16px;font-size:17px" onclick="openAdd()">＋ 記一筆</button></div>
-      <div class="hint">・結帳時給店員掃描，螢幕調到最亮比較好掃<br>・掃完直接按「記一筆」<br>・桌面直達：開啟網址後面加 carrier.html 的頁面，按「分享 → 加入主畫面」</div>`
-    : `<div class="card"><p class="mt0">輸入你的手機條碼（/ 開頭共 8 碼）</p><div class="fld"><input id="cin" placeholder="/ABC1234" autocapitalize="characters" style="font-size:20px;letter-spacing:3px"></div><button class="btn" onclick="saveCarrier($('#cin').value)">儲存</button></div>`}`;
-}
-function drawBarcode(){
-  const code = S.settings.carrier || P.carrier, el = $('#bcsvg'); if (!code || !el) return;
-  if (typeof JsBarcode === 'undefined') { el.outerHTML = '<div class="tx2">條碼元件載入失敗，請連網後重開</div>'; return; }
-  JsBarcode(el, code, {format:'CODE39', width:2.4, height:110, displayValue:false, margin:12, background:'#ffffff', lineColor:'#000000'});
-}
-function saveCarrier(v){
-  v = (v || '').trim().toUpperCase();
-  if (!/^\/[0-9A-Z.+\-]{7}$/.test(v)) return toast('格式：/ 開頭，後面 7 碼英數');
-  putSettings({carrier:v}); toast('已儲存');
-}
-function editCarrier(){ const v = prompt('手機條碼', S.settings.carrier || P.carrier); if (v !== null) saveCarrier(v); }
-
 /* ---------- settings ---------- */
 function viewSettings(){
   const th = S.settings.theme, cu = S.settings.custom || {};
@@ -3640,7 +3629,6 @@ function viewSettings(){
       <button class="row" onclick="openTplMgr()"><span class="mid"><b>常用範本</b><small>${tplList().length} 個</small></span>${ic('right',18)}</button>
       <button class="row" onclick="openCatMgr()"><span class="mid"><b>分類管理</b><small>新增、改名、刪除</small></span>${ic('right',18)}</button>
       <button class="row" onclick="openProjMgr()"><span class="mid"><b>專案管理</b><small>${Object.values(S.data.projects).filter(p => !p.hidden).length} 個專案</small></span>${ic('right',18)}</button>
-      ${FEAT.carrier ? `<button class="row" onclick="editCarrier()"><span class="mid"><b>手機條碼載具</b><small>${esc(S.settings.carrier || P.carrier || '未設定')}</small></span>${ic('right',18)}</button>` : ''}
       ${S.mode === 'cloud' ? `<button class="row" onclick="openBk()"><span class="mid"><b>雲端自動備份</b><small>${S.settings.autoBk === false ? '已關閉' : '每週自動'}・上次 ${S.settings.bkLast ? (d => `${d.getMonth() + 1}/${d.getDate()}`)(new Date(+S.settings.bkLast)) : '還沒備份'}</small></span>${ic('right',18)}</button>` : ''}
       <button class="row" onclick="openExport()"><span class="mid"><b>匯出 CSV／完整備份</b><small>CSV 可用 Excel 開；備份檔可匯回</small></span>${ic('right',18)}</button>
       <button class="row" onclick="pickImport()"><span class="mid"><b>匯入</b><small>CMoney CSV、Money CSV、備份檔；同一筆不會重複</small></span>${ic('right',18)}</button></div>
@@ -3825,7 +3813,7 @@ async function attachLedger(u, keep){
     }, e => { toast('讀取失敗：' + e.code); if (first) { first = false; done(); } }));
   }
   let firstS = true;
-  unsubs.push(ledgerRef.collection('meta').doc('settings').onSnapshot(d => { if (d.exists) { S.settings = {...S.settings, ...d.data()}; if (S.settings.carrier) { P.carrier = S.settings.carrier; savePrefs(); } applyTheme(); sched(); } if (firstS) { firstS = false; done(); } }));
+  unsubs.push(ledgerRef.collection('meta').doc('settings').onSnapshot(d => { if (d.exists) { S.settings = {...S.settings, ...d.data()}; applyTheme(); sched(); } if (firstS) { firstS = false; done(); } }));
 }
 
 /* ---------- boot ---------- */
@@ -3836,7 +3824,6 @@ function afterReady(){
 }
 function openTplMgr(){ F = blankF(); openTpl(); }
 function boot(){
-  if (location.hash === '#carrier' && FEAT.carrier) S.ui.tab = 'carrier';
   if (P.pin) lockNow();
   if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
   if (FIREBASE_CONFIG && typeof firebase === 'undefined') {
@@ -3875,7 +3862,6 @@ function boot(){
     const l = readLocal();
     if (l && l.data) { S.data = {accounts:{}, txns:{}, categories:{}, projects:{}, recurring:{}, templates:{}, plans:{}, ...l.data}; S.settings = {...S.settings, ...(l.settings || {})}; }
     else { S.data = defaultData(); saveLocal(); }
-    if (!S.settings.carrier && P.carrier) S.settings.carrier = P.carrier;
     S.ready = true; bump(); applyTheme(); render(); afterReady();
   }
   refreshRates();
@@ -3916,7 +3902,6 @@ addEventListener('popstate', () => {
 
 /* 離開 App 再回來：回到首頁＋今天（停靠點）。正在記帳且已輸入內容時保留，避免資料遺失 */
 let awayAt = 0, BUSY_UNTIL = 0;
-const LAUNCH_CARRIER = location.hash === '#carrier' && FEAT.carrier;
 const fSig = f => JSON.stringify({...f, active:0, kpHide:0, showPer:0, perAuto:0, _sig:0});
 function hasDraft(){ return LAYERS.some(l => l.key === 'add') && F && (F.amtExpr || F.note.trim()) && !(F._sig && F._sig === fSig(F)); }
 function backToDock(){
@@ -3925,8 +3910,8 @@ function backToDock(){
   for (const L of [...LAYERS]) if (!(keepAdd && L.key === 'add')) closeLayer(L.key, true);
   const n = new Date();
   S.ui.sel = today(); S.ui.sorting = false; S.ui.rp = {...S.ui.rp, per:'month', y:n.getFullYear(), m:n.getMonth()};
-  S.ui.tab = LAUNCH_CARRIER ? 'carrier' : 'home'; NAVSTK = [];
-  history.replaceState(null, '', location.pathname + location.search + (LAUNCH_CARRIER ? '#carrier' : ''));
+  S.ui.tab = 'home'; NAVSTK = [];
+  history.replaceState(null, '', location.pathname + location.search);
   render(); scrollTo(0, 0);
 }
 document.addEventListener('visibilitychange', () => {
