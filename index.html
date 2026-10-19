@@ -354,7 +354,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'V3 demo';
+const VERSION = 'V3 demo 完整連動版';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -827,7 +827,7 @@ function applyTheme(){
 }
 let iconFor = '';
 function makeIcon(color){
-  color = '#2BB3A3';   // v2.23：主畫面圖示固定湖水綠，不跟主題變
+  color = '#F58EB3';   // V3：APP 圖示採櫻花粉主色
   if (iconFor === color) return; iconFor = color;
   const c = document.createElement('canvas'); c.width = c.height = 180; const x = c.getContext('2d');
   x.fillStyle = color; x.fillRect(0, 0, 180, 180);
@@ -1944,12 +1944,14 @@ function reportDayPick(){const d=pd(R26.date);openYMcb(d.getFullYear(),d.getMont
   R26.date=ds(new Date(yy,mm,day));redraw('r26day');
   openReportDayCalendar26(yy,mm);
 });}
+function reportCalendarMonth26(n){const d=new Date(R26.calY,R26.calM+n,1);R26.calY=d.getFullYear();R26.calM=d.getMonth();redraw('r26calendar');}
 function openReportDayCalendar26(y,m){
+  R26.calY=y;R26.calM=m;
   openLayer('r26calendar',()=>{
-    const first=new Date(y,m,1).getDay(), n=dim(y,m), offset=(first+6)%7;
+    y=R26.calY;m=R26.calM;const first=new Date(y,m,1).getDay(), n=dim(y,m), offset=(first+6)%7;
     const cells=Array.from({length:offset},()=>'<span></span>').concat(Array.from({length:n},(_,i)=>{
       const d=ds(new Date(y,m,i+1)), z=summary(d,d);return `<button class="${d===R26.date?'on':''}" onclick="R26.date='${d}';closeLayer('r26calendar');redraw('r26day')" style="padding:9px 3px;border-radius:9px;background:${d===R26.date?'var(--pri)':'var(--bg)'};color:${d===R26.date?'white':'var(--tx)'}">${i+1}${z.inc||z.exp?'<small style="display:block;font-size:9px">•</small>':''}</button>`;}));
-    return sheet('r26calendar',`${y} 年 ${m+1} 月`, `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center">${['一','二','三','四','五','六','日'].map(x=>`<small class="tx2">${x}</small>`).join('')}${cells.join('')}</div>`);
+    return sheet('r26calendar',`選擇日期`, `<div class="rbar" style="margin:0 0 12px"><span></span><div class="nav2"><button onclick="reportCalendarMonth26(-1)">${ic('left',20)}</button><b>${y} 年 ${m+1} 月</b><button onclick="reportCalendarMonth26(1)">${ic('right',20)}</button></div></div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center">${['一','二','三','四','五','六','日'].map(x=>`<small class="tx2">${x}</small>`).join('')}${cells.join('')}</div>`);
   },'btm');
 }
 function reportType26(type){R26.kind=type;redraw(LAYERS.length&&LAYERS[LAYERS.length-1].key==='r26day'?'r26day':'r26month');}
@@ -2123,19 +2125,29 @@ function viewOverview(){
       <div class="lg2">${ser.map(x => leg(x.k, x.l, x.color, x.dash)).join('')}</div>
       ${sx ? `<div class="selbox"><b>${ymS(sx.y, sx.m)}</b><span class="inc">收入 ${twd(sx.inc)}</span><span class="exp">支出 ${twd(sx.exp)}</span><span>結餘 ${twd(sx.net)}</span><span style="color:#8E6CC0">儲蓄率 ${sx.inc ? (sx.net / sx.inc * 100).toFixed(0) : 0}%</span>${hasFixed ? `<span class="tx2">固定 ${twd(sx.fix)}・可省 ${twd(sx.save)}</span>` : ''}</div>` : ''}
       ${hasFixed ? '' : `<div class="sm tx2" style="margin-top:6px">想看「可省支出」？<button style="color:var(--acc);font-weight:600" onclick="openFixed()">設定固定支出分類</button></div>`}</div>`;
-    const cur = monthStat(cy, cm), prevS = monthStat(py, pm, isCur ? sameDayCut(py, pm, td) : null), done = ms.slice(0, -1), prevFull = done[done.length - 1];
-    const sr = x => x && x.inc ? x.net / x.inc * 100 : 0, avg = done.length ? done.reduce((s2, x) => s2 + x.exp, 0) / done.length : 0, cp = pct(cur.exp, prevS.exp);
-    const fst = (compute().list[0] || {}).date || td, ly0 = ds(new Date(cy - 1, cm, 1)), lyS = monthStat(cy - 1, cm, isCur ? sameDayCut(cy - 1, cm, td) : null);
-    const yoy = ly0 < fst.slice(0, 8) + '01' ? '<span class="tx2 cmp">去年無資料</span>' : lyS.exp ? cmpTxt(pct(cur.exp, lyS.exp), '比去年同期') : '<span class="tx2 cmp">去年同期無支出</span>';
+    // V3：趨勢圖點選月份後，所有月比較、儲蓄率及其基準同步選取月份。
+    const focus = (!CR && UX.ovFocus) ? UX.ovFocus : (sx ? {y:sx.y,m:sx.m} : {y:cy,m:cm});
+    const fy=focus.y, fm=focus.m, focusCurrent=fy===now.getFullYear()&&fm===now.getMonth();
+    const [fpy,fpm]=prevYM(fy,fm);
+    const cur=monthStat(fy,fm), prevS=monthStat(fpy,fpm,focusCurrent?sameDayCut(fpy,fpm,td):null);
+    const hist=monthsBack(fy,fm,N).slice(0,-1).map(([yy,mm])=>monthStat(yy,mm));
+    const prevFull=monthStat(fpy,fpm);
+    const sr=x=>x&&x.inc?x.net/x.inc*100:0;
+    const avg=hist.length?hist.reduce((s2,x)=>s2+x.exp,0)/hist.length:0;
+    const cp=pct(cur.exp,prevS.exp);
+    const fst=(compute().list[0]||{}).date||td;
+    const ly0=ds(new Date(fy-1,fm,1));
+    const lyS=monthStat(fy-1,fm,focusCurrent?sameDayCut(fy-1,fm,td):null);
+    const yoy=ly0<fst.slice(0,8)+'01'?'<span class="tx2 cmp">去年無資料</span>':lyS.exp?cmpTxt(pct(cur.exp,lyS.exp),'比去年同期'):'<span class="tx2 cmp">去年同期無支出</span>';
     const more = `<div class="sm" style="margin-top:8px;text-align:right;color:var(--acc);font-weight:600">每月收支明細 ›</div>`;
-    const viewMonth = UX.ovFocus ? monthStat(UX.ovFocus.y,UX.ovFocus.m) : (sx || cur);
+    const viewMonth = cur;
     const monthCard26 = `<div class="sec"><h3>${viewMonth.y} 年 ${viewMonth.m+1} 月總覽</h3><button class="sm" style="color:var(--acc);font-weight:600" onclick="openOvTbl()">每月明細 ›</button></div><button class="card" style="width:calc(100% - 32px);text-align:left;display:block;margin-top:0" onclick="reportMonthOpen(${viewMonth.y},${viewMonth.m})"><div class="sum3"><div><small class="tx2">收入</small><b class="inc">${twd(viewMonth.inc)}</b></div><div><small class="tx2">支出</small><b class="exp">${twd(viewMonth.exp)}</b></div><div><small class="tx2">結餘</small><b>${twd(viewMonth.net)}</b></div></div><div class="sm" style="margin-top:8px;text-align:right;color:var(--acc)">查看當月分析 ›</div></button>`;
-    if (CR) { const T = ms.reduce((o, x) => ({inc:o.inc + x.inc, exp:o.exp + x.exp}), {inc:0, exp:0}), net = T.inc - T.exp;
+    if (CR) { main += monthCard26; const T = ms.reduce((o, x) => ({inc:o.inc + x.inc, exp:o.exp + x.exp}), {inc:0, exp:0}), net = T.inc - T.exp;
       main += `<div class="card tap" onclick="openOvTbl()"><div class="ovk"><div><small>期間收入</small><b class="inc">${twd(T.inc)}</b></div><div><small>期間支出</small><b class="exp">${twd(T.exp)}</b><span class="tx2">月均 ${twd(T.exp / N)}</span></div>
         <div><small>結餘・儲蓄率</small><b class="${net < 0 ? 'exp' : ''}">${twd(net)}</b><span style="color:${net >= 0 ? 'var(--acc)' : 'var(--exp)'}">${T.inc ? (net / T.inc * 100).toFixed(0) : 0}%${S.settings.srGoal ? `（目標 ${S.settings.srGoal}%）` : ''}</span></div></div>${more}</div>`; }
-    else main += monthCard26 + `<div class="card tap" onclick="openOvTbl()"><div class="ovk"><div><small>${isCur ? '本月' : ymS(cy, cm)} 儲蓄率</small><b style="color:${sr(cur) >= 0 ? 'var(--acc)' : 'var(--exp)'}">${sr(cur).toFixed(0)}%</b><span class="tx2">前月 ${sr(prevFull).toFixed(0)}%</span>${S.settings.srGoal ? `<span style="color:${sr(cur) >= S.settings.srGoal ? 'var(--acc)' : 'var(--exp)'}">目標 ${S.settings.srGoal}%・${sr(cur) >= S.settings.srGoal ? '達成' : '未達'}</span>` : ''}</div>
-      <div><small>月均支出</small><b>${twd(avg)}</b><span class="tx2">前 ${done.length} 個月</span></div>
-      <div><small>支出比上月</small><b style="color:${cp > 0 ? 'var(--exp)' : 'var(--acc)'}">${prevS.exp ? (cp > 0 ? '+' : '−') + Math.abs(cp).toFixed(0) + '%' : '—'}</b><span class="tx2">${isCur ? '同期比較' : '整月比較'}</span>${yoy}</div></div>${more}</div>`;
+    else main += monthCard26 + `<div class="card tap" onclick="openOvTbl()"><div class="ovk"><div><small>${focusCurrent ? '本月' : ymS(fy, fm)} 儲蓄率</small><b style="color:${sr(cur) >= 0 ? 'var(--acc)' : 'var(--exp)'}">${sr(cur).toFixed(0)}%</b><span class="tx2">前月 ${sr(prevFull).toFixed(0)}%</span>${S.settings.srGoal ? `<span style="color:${sr(cur) >= S.settings.srGoal ? 'var(--acc)' : 'var(--exp)'}">目標 ${S.settings.srGoal}%・${sr(cur) >= S.settings.srGoal ? '達成' : '未達'}</span>` : ''}</div>
+      <div><small>月均支出</small><b>${twd(avg)}</b><span class="tx2">前 ${hist.length} 個月</span></div>
+      <div><small>支出比上月</small><b style="color:${cp > 0 ? 'var(--exp)' : 'var(--acc)'}">${prevS.exp ? (cp > 0 ? '+' : '−') + Math.abs(cp).toFixed(0) + '%' : '—'}</b><span class="tx2">${focusCurrent ? '同期比較' : '整月比較'}</span>${yoy}</div></div>${more}</div>`;
   }
   // 這個月變多的分類（比近 3 個月同期平均）；自訂區間：比前一段同長度
   let F0 = f0, T0 = t0, CUT = cut;
@@ -2143,16 +2155,17 @@ function viewOverview(){
   if (CR) { F0 = CR.from; T0 = CR.to; CUT = CR.cut; }
   const curC = catTotals(F0, CUT, 'expense'), base = {};
   const [focusY,focusM]=UX.ovFocus&&!CR?[UX.ovFocus.y,UX.ovFocus.m]:[cy,cm];
+  const focusIsCurrent=focusY===now.getFullYear()&&focusM===now.getMonth();
   if (CR) { const len = diffD(CUT, F0), b1 = addD(F0, -1), b0 = addD(b1, -len), c = catTotals(b0, b1, 'expense'); for (const k in c) base[k] = c[k]; }
-  else monthsBack(focusY, focusM, 4).slice(0, 3).forEach(([y, m]) => { const c = catTotals(mRange(y, m)[0], isCur ? sameDayCut(y, m, td) : mRange(y, m)[1], 'expense'); for (const k in c) base[k] = (base[k] || 0) + c[k] / 3; });
+  else monthsBack(focusY, focusM, 4).slice(0, 3).forEach(([y, m]) => { const c = catTotals(mRange(y, m)[0], focusIsCurrent ? sameDayCut(y, m, td) : mRange(y, m)[1], 'expense'); for (const k in c) base[k] = (base[k] || 0) + c[k] / 3; });
   const ups = Object.keys({...curC, ...base}).map(k => ({k, d:(curC[k] || 0) - (base[k] || 0)})).filter(x => x.d >= 100).sort((a, b) => b.d - a.d).slice(0, 3);
-  const upCard = `<div class="sec"><h3>${CR ? '這段期間' : isCur ? '這個月' : ymS(cy, cm)} 變多的</h3><span class="sm tx2">${CR ? (addD(F0, -1 - diffD(CUT, F0)) < ((compute().list[0] || {}).date || td) ? '比前一段（資料不完整）' : '比前一段同長度期間') : `比前 3 個月${isCur ? '同期' : ''}平均`}</span></div><div class="list">${ups.length ? ups.map(x => { const c = S.data.categories[x.k];
+  const upCard = `<div class="sec"><h3>${CR ? '這段期間' : focusIsCurrent ? '這個月' : ymS(focusY, focusM)} 變多的</h3><span class="sm tx2">${CR ? (addD(F0, -1 - diffD(CUT, F0)) < ((compute().list[0] || {}).date || td) ? '比前一段（資料不完整）' : '比前一段同長度期間') : `比前 3 個月${focusIsCurrent ? '同期' : ''}平均`}</span></div><div class="list">${ups.length ? ups.map(x => { const c = S.data.categories[x.k];
     return `<button class="row" onclick="openCatRpt('${x.k}','${F0}','${T0}','expense')"><span class="cic" style="background:${c?.color || '#aaa'}">${ic(c?.icon || 'more',20)}</span><span class="mid"><b>${esc(c?.name || '未分類')}</b><small>${twd(curC[x.k] || 0)}・${CR ? '前一段' : '平均'} ${twd(base[x.k] || 0)}</small></span><span class="amt exp">+${twd(x.d)}</span></button>`; }).join('') : '<div class="empty">沒有明顯變多的分類 👍</div>'}</div>`;
   // 小額消費
   const SM = smallMax(), isSm = f => f.type === 'expense' && !isInstT(f.t) && f.cat !== FEE_CAT && f.t.amount <= SM;
   const sm = flowsIn(F0, CUT).filter(isSm), smT = sm.reduce((x, f) => x + f.amt, 0), byS = {};
   sm.forEach(f => { const k = (f.t.store || '').trim() || (S.data.categories[f.cat]?.name || '其他'); byS[k] = (byS[k] || 0) + 1; });
-  const topS = Object.entries(byS).sort((a, b) => b[1] - a[1]).slice(0, 3), m6 = CR ? CR.months.slice(-12) : monthsBack(cy, cm, 6), pm6 = m6.map(([y, m]) => flowsIn(...mRange(y, m)).filter(isSm).reduce((x, f) => x + f.amt, 0));
+  const topS = Object.entries(byS).sort((a, b) => b[1] - a[1]).slice(0, 3), m6 = CR ? CR.months.slice(-12) : monthsBack(focusY, focusM, 6), pm6 = m6.map(([y, m]) => flowsIn(...mRange(y, m)).filter(isSm).reduce((x, f) => x + f.amt, 0));
   const smCard = `<div class="sec"><h3>小額消費（$${SM} 以下）</h3><button class="sm" style="color:var(--acc);font-weight:600" onclick="setSmallMax()">改門檻</button></div>
     <button class="card" style="width:calc(100% - 32px);text-align:left;display:block;margin-top:0" onclick="SR={q:'',type:'expense',acc:'',cat:'',proj:'',from:'${F0}',to:'${CUT}',min:'',max:'${SM}',limit:100,more:true};openSearch()">
     <div class="ovk"><div><small>筆數</small><b>${sm.length} 筆</b></div><div><small>合計</small><b class="exp">${twd(smT)}</b></div><div><small>${CR ? '各月' : '近 6 個月'}</small>${sparkline(pm6)}</div></div>
