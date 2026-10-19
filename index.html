@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Money">
-<meta name="theme-color" content="#FAF8F7">
+<meta name="theme-color" content="#FFF8FB">
 <title>Money</title>
 <link rel="apple-touch-icon" id="touchIcon">
 <link rel="icon" id="favIcon">
@@ -282,6 +282,28 @@ body{zoom:var(--z)}
 .login{max-width:380px;margin:0 auto;padding:calc(70px + env(safe-area-inset-top)) 24px 40px}
 .login h1{font-size:34px;color:var(--pri);margin:0 0 6px;letter-spacing:2px}
 .ghost-sortable{opacity:.4}
+
+/* Money V3 demo: 櫻花粉主色、湖水綠輔色、單色按鈕 */
+:root{--pri:#F58EB3;--acc:#57C9C7;--pri-s:#FFE7F0;--acc-s:#E7FBF8;--bg:#FFF8FB;--card:#FFFFFF;--tx:#2D2430;--tx2:#8F7F89;--line:#F2E8ED;--exp:#C94150;--inc:#2376AA;--sh:0 3px 14px rgba(144,75,101,.09)}
+[data-mode=dark]{--bg:#191619;--card:#262126;--tx:#F8F1F5;--tx2:#B6A5B1;--line:#443740;--exp:#FF8B96;--inc:#78C7F1;--sh:0 3px 14px rgba(0,0,0,.15)}
+html,body{background:var(--bg)}
+.card,.list,.per div,.catbtn,.amtbox,.tbox,.chip{border:1px solid var(--line);box-shadow:var(--sh)}
+.card{border-radius:22px;padding:18px}
+.row{padding:13px 15px}
+.cic{border-radius:14px}
+.top .ib.on,.rptcard,.row.hl{background:var(--pri-s)!important;color:var(--pri)}
+.day.sel,.ymg button.on{background:var(--pri)}
+nav{background:var(--card);border-top:1px solid var(--line)}
+nav .fab{background:var(--pri);box-shadow:0 7px 18px rgba(245,142,179,.26)}
+.btn,.kp .ok,.kpsave button,.kbok button{background:var(--pri)}
+.swap,.chipz button.on{background:var(--acc-s);color:#287E7C}
+.seg button.on{color:var(--pri)}
+.seg.exp button.on{color:var(--exp)}
+.seg.inc button.on{color:var(--inc)}
+.exp,.amtbox.expense .big{color:var(--exp)}
+.inc,.amtbox.income .big{color:var(--inc)}
+button:focus-visible,.tap:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.tap,.layer{transition:none}}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -332,7 +354,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'v2.5';
+const VERSION = 'V3 demo';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -794,13 +816,13 @@ function effMode(){
 setInterval(() => { if (P.mode === 'time' && document.documentElement.dataset.mode !== effMode()) applyTheme(); }, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) applyTheme(); });
 function applyTheme(){
-  const th = S.settings.theme === 'custom' ? S.settings.custom : (THEMES[S.settings.theme] || THEMES.rose);
+  const th = {pri:'#F58EB3', acc:'#57C9C7'}; // V3 demo visual-only palette
   const dark = effMode() === 'dark', r = document.documentElement;
   r.dataset.mode = dark ? 'dark' : 'light';
   r.style.setProperty('--pri', th.pri); r.style.setProperty('--acc', th.acc);
   r.style.setProperty('--pri-s', dark ? mix(th.pri, '#211E1F', .72) : mix(th.pri, '#FFFFFF', .84));
   r.style.setProperty('--acc-s', dark ? mix(th.acc, '#211E1F', .72) : mix(th.acc, '#FFFFFF', .84));
-  document.querySelector('meta[name=theme-color]').content = dark ? '#151314' : '#FAF8F7';
+  document.querySelector('meta[name=theme-color]').content = dark ? '#181418' : '#FFF8FB';
   makeIcon(th.acc);
 }
 let iconFor = '';
@@ -1896,6 +1918,69 @@ function quickCat(parent){
 }
 
 
+/* v2.6 報表導覽：沿用原有 summary / catTotals / flowsIn 計算，不改動帳務 */
+let R26 = {monthKey:null, kind:'expense'};
+function reportMonthOpen(y,m){
+  R26.monthKey = `${y}-${pad(m+1)}`;
+  R26.kind = 'expense';
+  openLayer('r26month', renderReportMonth26, 'full');
+}
+function reportMonthChange(n){
+  let [y,m] = R26.monthKey.split('-').map(Number); m = m-1+n;
+  y += Math.floor(m/12); m = ((m%12)+12)%12;
+  R26.monthKey = `${y}-${pad(m+1)}`; redraw('r26month');
+}
+function reportMonthPick(){
+  const [y,m]=R26.monthKey.split('-').map(Number);
+  openYMcb(y,m-1,false,(yy,mm)=>{R26.monthKey=`${yy}-${pad(mm+1)}`;redraw('r26month');});
+}
+function reportDayOpen(date){
+  R26.date=date; R26.kind='expense';
+  openLayer('r26day', renderReportDay26, 'full');
+}
+function reportDayChange(n){R26.date=addD(R26.date,n);redraw('r26day');}
+function reportDayPick(){const d=pd(R26.date);openYMcb(d.getFullYear(),d.getMonth(),false,(yy,mm)=>{
+  const max=dim(yy,mm), day=Math.min(d.getDate(),max);
+  R26.date=ds(new Date(yy,mm,day));redraw('r26day');
+  openReportDayCalendar26(yy,mm);
+});}
+function openReportDayCalendar26(y,m){
+  openLayer('r26calendar',()=>{
+    const first=new Date(y,m,1).getDay(), n=dim(y,m), offset=(first+6)%7;
+    const cells=Array.from({length:offset},()=>'<span></span>').concat(Array.from({length:n},(_,i)=>{
+      const d=ds(new Date(y,m,i+1)), z=summary(d,d);return `<button class="${d===R26.date?'on':''}" onclick="R26.date='${d}';closeLayer('r26calendar');redraw('r26day')" style="padding:9px 3px;border-radius:9px;background:${d===R26.date?'var(--pri)':'var(--bg)'};color:${d===R26.date?'white':'var(--tx)'}">${i+1}${z.inc||z.exp?'<small style="display:block;font-size:9px">•</small>':''}</button>`;}));
+    return sheet('r26calendar',`${y} 年 ${m+1} 月`, `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center">${['一','二','三','四','五','六','日'].map(x=>`<small class="tx2">${x}</small>`).join('')}${cells.join('')}</div>`);
+  },'btm');
+}
+function reportType26(type){R26.kind=type;redraw(LAYERS.length&&LAYERS[LAYERS.length-1].key==='r26day'?'r26day':'r26month');}
+function reportSummary26(from,to){const z=summary(from,to);return `<div class="card mt0"><div class="sum3"><div><small class="tx2">收入</small><b class="inc">${twd(z.inc)}</b></div><div><small class="tx2">支出</small><b class="exp">${twd(z.exp)}</b></div><div><small class="tx2">結餘</small><b>${twd(z.inc-z.exp)}</b></div></div></div>`;}
+function reportCatBlock26(from,to){
+  const type=R26.kind, totals=catTotals(from,to,type), items=catItems(totals), total=items.reduce((n,x)=>n+x.val,0);
+  return `<div class="segw"><div class="seg ${type==='expense'?'exp':'inc'}"><button class="${type==='expense'?'on':''}" onclick="reportType26('expense')">支出</button><button class="${type==='income'?'on':''}" onclick="reportType26('income')">收入</button></div></div>
+    <div class="card">${donut(items,type==='expense'?'支出分類':'收入分類',twd(total)).replace(/onclick="donutPick\('([^']+)'\)"/g,(_,id)=>`onclick="openCatRpt('${id}','${from}','${to}','${type}')"`)}</div>
+    <div class="sec"><h3>分類金額排行</h3><span class="sm tx2">點分類查看分析</span></div>
+    <div class="list">${items.length?catList(items,it=>`openCatRpt('${it.id}','${from}','${to}','${type}')`):'<div class="empty">沒有紀錄</div>'}</div>`;
+}
+function reportDayBars26(y,m){
+  const n=dim(y,m), vals=Array.from({length:n},(_,i)=>{const d=ds(new Date(y,m,i+1));return summary(d,d).exp;});
+  return `<div class="card"><div class="sec" style="margin:0 0 5px"><h3>每日支出</h3><small class="tx2">點柱狀位置看當日分析</small></div><div style="position:relative">${bars(vals.map((_,i)=>i+1),[{vals,color:'var(--exp)'}],5)}<div style="position:absolute;inset:0;display:grid;grid-template-columns:repeat(${n},1fr)">${vals.map((_,i)=>`<button title="${m+1}/${i+1}" aria-label="${m+1}月${i+1}日分析" onclick="reportDayOpen('${ds(new Date(y,m,i+1))}')" style="min-width:0"></button>`).join('')}</div></div></div>`;
+}
+function renderReportMonth26(){
+  const [y,mm]=R26.monthKey.split('-').map(Number),m=mm-1,[from,to]=mRange(y,m);
+  return `<div class="lin"><div class="lhd"><button class="ib" onclick="closeLayer('r26month')">${ic('left',24)}</button><h2>${y} 年 ${mm} 月分析</h2><span style="width:40px"></span></div>
+  <div class="fscroll"><div class="rbar"><span></span><div class="nav2"><button onclick="reportMonthChange(-1)">${ic('left',20)}</button><span class="ymt" onclick="reportMonthPick()">${y} 年 ${mm} 月 ▾</span><button onclick="reportMonthChange(1)">${ic('right',20)}</button></div></div>
+  ${reportSummary26(from,to)}${reportCatBlock26(from,to)}${reportDayBars26(y,m)}
+  <div class="sec"><h3>每日收支</h3><span class="sm tx2">點日期查看分析</span></div><div class="list">${Array.from({length:dim(y,m)},(_,i)=>dim(y,m)-i).map(d=>{const date=ds(new Date(y,m,d)),z=summary(date,date);return z.inc||z.exp?`<button class="row" onclick="reportDayOpen('${date}')"><span class="mid"><b>${mm}/${d}</b><small>收入 ${twd(z.inc)}・支出 ${twd(z.exp)}</small></span><span>${ic('right',18)}</span></button>`:''}).join('')||'<div class="empty">沒有紀錄</div>'}</div><div style="height:25px"></div></div></div>`;
+}
+function renderReportDay26(){
+  const date=R26.date,[y,m,d]=date.split('-').map(Number), from=date,to=date;
+  return `<div class="lin"><div class="lhd"><button class="ib" onclick="closeLayer('r26day')">${ic('left',24)}</button><h2>${y}/${m}/${d} 當日分析</h2><span style="width:40px"></span></div>
+  <div class="fscroll"><div class="rbar"><span></span><div class="nav2"><button onclick="reportDayChange(-1)">${ic('left',20)}</button><span class="ymt" onclick="openReportDayCalendar26(${y},${m-1})">${y}/${m}/${d} ▾</span><button onclick="reportDayChange(1)">${ic('right',20)}</button></div></div>
+  ${reportSummary26(from,to)}${reportCatBlock26(from,to)}<div class="sec"><h3>當日${R26.kind==='expense'?'支出':'收入'}明細</h3></div>
+  <div class="list">${(()=>{const rows=flowGroups(catFlows(date,date,R26.kind)).reverse();return rows.length?rows.map(r=>r.k!==undefined?pieceRow(r,{withDate:true}):txnRow(r.t,null,true)).join(''):'<div class="empty">沒有紀錄</div>'})()}</div><div style="height:25px"></div></div></div>`;
+}
+function reportSelectMonth26(i,ms){UX.ovSel=i; const x=ms[i];if(x){S.ui.rp.y=x.y;S.ui.rp.m=x.m;}render();}
+
 /* ---------- reports ---------- */
 function rpRange(r = S.ui.rp){
   if (r.per === 'month') return [ds(new Date(r.y, r.m, 1)), ds(new Date(r.y, r.m, dim(r.y, r.m))), `${r.y} 年 ${r.m+1} 月`];
@@ -1971,7 +2056,7 @@ function sameDayCut(y, m, ref){ const d = Math.min(pd(ref).getDate(), dim(y, m))
 const pct = (a, b) => b ? (a - b) / b * 100 : 0;
 const cmpTxt = (p, lbl) => `<span class="cmp" style="color:${p > 0 ? 'var(--exp)' : 'var(--acc)'}">${lbl} ${p > 0 ? '+' : '−'}${Math.abs(p).toFixed(0)}%</span>`;
 /* 月份列（總覽、預算、資產共用）：‹ 2026 年 10 月 ▾ › */
-function mShift(n){ const r = S.ui.rp; r.m += n; while (r.m < 0) { r.m += 12; r.y--; } while (r.m > 11) { r.m -= 12; r.y++; } UX.ovSel = null; render(); }
+function mShift(n){ UX.ovFocus=null; const r = S.ui.rp; r.m += n; while (r.m < 0) { r.m += 12; r.y--; } while (r.m > 11) { r.m -= 12; r.y++; } UX.ovSel = null; render(); }
 function monthNav(left = '<span></span>'){ const r = S.ui.rp, now = new Date(), isCur = r.y === now.getFullYear() && r.m === now.getMonth();
   return `<div class="rbar">${left}<div class="nav2"><button onclick="mShift(-1)">${ic('left',20)}</button><span class="ymt" onclick="openYM('rpm')">${r.y} 年 ${r.m + 1} 月 ▾</span><button onclick="mShift(1)" ${isCur ? 'disabled style="opacity:.3"' : ''}>${ic('right',20)}</button></div></div>`; }
 /* 多條折線（可開關、可點月份） */
@@ -1993,7 +2078,7 @@ function multiLine(labels, series, selIdx, onPick, goal){
   out += `<text x="2" y="10" font-size="10" style="fill:var(--tx2)">${twd(mx)}</text>`;
   return `<div class="chart"><svg viewBox="${sl ? '-22 0 ' + (W + 22) : '0 0 ' + W} ${H}">${out}</svg></div>`;
 }
-function ovPick(i){ UX.ovSel = UX.ovSel === i ? null : i; render(); }
+function ovPick(i){ const r=S.ui.rp;const cr=r.ov==='c'?ovRange():null;const m=(cr?cr.months:monthsBack(r.y,r.m,+r.ov))[i];UX.ovSel=i;if(m){UX.ovFocus={y:m[0],m:m[1]};}render(); }
 function ovTog(k){ UX.ovHide[k] = k === 'sr' ? UX.ovHide.sr === false : !UX.ovHide[k]; render(); }
 const smallMax = () => +S.settings.smallMax || 200;
 function setSmallMax(){ const v = parseInt(prompt('小額消費門檻（元，含以下）', smallMax())); if (v > 0) putSettings({smallMax:v}); }
@@ -2026,8 +2111,8 @@ function viewOverview(){
       <div class="card"><div class="ovk"><div class="tap" onclick="goRp('cat','month',${cy},${cm},'expense')"><small>${isCur ? '到今天花' : '整月支出'} ›</small><b class="exp">${twd(spent)}</b>${pSame ? cmpTxt(pct(spent, pSame), '比上月同期') : ''}</div>
         <div class="tap" onclick="${bt ? `goRp('budget','month',${cy},${cm})` : `goRp('cat','month',${cy},${cm},'expense')`}"><small>${isCur ? '月底預估' : '預算'} ›</small><b>${isCur ? twd(est) : bt ? twd(bt) : '—'}</b>${bt && isCur ? `<span class="${est > bt ? 'exp' : 'tx2'}">${est > bt ? '照這速度會超出預算' : '在預算內'}</span>` : ''}</div>
         <div class="tap" onclick="goRp('cat','month',${cy},${cm},'income')"><small>本月收入 ›</small><b class="inc">${twd(inc)}</b></div></div></div>
-      <div class="card">${bars(dCur.concat(Array(n - day).fill(0)).map((_, i) => `${cm + 1}/${i + 1}`), [{vals:dCur.concat(Array(n - day).fill(0)), color:'var(--exp)'}], 5)}<div class="sm tx2" style="margin-top:4px">每日支出・點下面日期看明細</div></div>
-      <div class="card mt0" style="margin-top:0"><table class="tbl"><tr><th>日期</th><th>收入</th><th>支出</th></tr>${[...Array(day)].map((_, i) => day - i).map(d => { const x = ds(new Date(cy, cm, d)), sm = summary(x, x); return sm.inc || sm.exp ? `<tr onclick="S.ui.sel='${x}';go('home')" style="cursor:pointer"><td>${x.replace(/-/g, '/')}（${WD[pd(x).getDay()]}）</td><td class="inc">${sm.inc ? twd(sm.inc) : ''}</td><td class="exp">${sm.exp ? twd(sm.exp) : ''}</td></tr>` : ''; }).join('')}</table></div>`;
+      ${reportDayBars26(cy,cm)}
+      <div class="card mt0" style="margin-top:0"><table class="tbl"><tr><th>日期</th><th>收入</th><th>支出</th></tr>${[...Array(day)].map((_, i) => day - i).map(d => { const x = ds(new Date(cy, cm, d)), sm = summary(x, x); return sm.inc || sm.exp ? `<tr onclick="reportDayOpen('${x}')" style="cursor:pointer"><td>${x.replace(/-/g, '/')}（${WD[pd(x).getDay()]}）</td><td class="inc">${sm.inc ? twd(sm.inc) : ''}</td><td class="exp">${sm.exp ? twd(sm.exp) : ''}</td></tr>` : ''; }).join('')}</table></div>`;
   } else {
     const N = CR ? CR.months.length : +ov, ms = (CR ? CR.months : monthsBack(cy, cm, N)).map(([y, m]) => monthStat(y, m, CR ? CR.cut : null)), lbl = ms.map(x => ymS(x.y, x.m));
     const ser = [{k:'inc', l:'收入', vals:ms.map(x => x.inc), color:'var(--inc)'}, {k:'exp', l:'支出', vals:ms.map(x => x.exp), color:'var(--exp)'},
@@ -2043,19 +2128,23 @@ function viewOverview(){
     const fst = (compute().list[0] || {}).date || td, ly0 = ds(new Date(cy - 1, cm, 1)), lyS = monthStat(cy - 1, cm, isCur ? sameDayCut(cy - 1, cm, td) : null);
     const yoy = ly0 < fst.slice(0, 8) + '01' ? '<span class="tx2 cmp">去年無資料</span>' : lyS.exp ? cmpTxt(pct(cur.exp, lyS.exp), '比去年同期') : '<span class="tx2 cmp">去年同期無支出</span>';
     const more = `<div class="sm" style="margin-top:8px;text-align:right;color:var(--acc);font-weight:600">每月收支明細 ›</div>`;
+    const viewMonth = UX.ovFocus ? monthStat(UX.ovFocus.y,UX.ovFocus.m) : (sx || cur);
+    const monthCard26 = `<div class="sec"><h3>${viewMonth.y} 年 ${viewMonth.m+1} 月總覽</h3><button class="sm" style="color:var(--acc);font-weight:600" onclick="openOvTbl()">每月明細 ›</button></div><button class="card" style="width:calc(100% - 32px);text-align:left;display:block;margin-top:0" onclick="reportMonthOpen(${viewMonth.y},${viewMonth.m})"><div class="sum3"><div><small class="tx2">收入</small><b class="inc">${twd(viewMonth.inc)}</b></div><div><small class="tx2">支出</small><b class="exp">${twd(viewMonth.exp)}</b></div><div><small class="tx2">結餘</small><b>${twd(viewMonth.net)}</b></div></div><div class="sm" style="margin-top:8px;text-align:right;color:var(--acc)">查看當月分析 ›</div></button>`;
     if (CR) { const T = ms.reduce((o, x) => ({inc:o.inc + x.inc, exp:o.exp + x.exp}), {inc:0, exp:0}), net = T.inc - T.exp;
       main += `<div class="card tap" onclick="openOvTbl()"><div class="ovk"><div><small>期間收入</small><b class="inc">${twd(T.inc)}</b></div><div><small>期間支出</small><b class="exp">${twd(T.exp)}</b><span class="tx2">月均 ${twd(T.exp / N)}</span></div>
         <div><small>結餘・儲蓄率</small><b class="${net < 0 ? 'exp' : ''}">${twd(net)}</b><span style="color:${net >= 0 ? 'var(--acc)' : 'var(--exp)'}">${T.inc ? (net / T.inc * 100).toFixed(0) : 0}%${S.settings.srGoal ? `（目標 ${S.settings.srGoal}%）` : ''}</span></div></div>${more}</div>`; }
-    else main += `<div class="card tap" onclick="openOvTbl()"><div class="ovk"><div><small>${isCur ? '本月' : ymS(cy, cm)} 儲蓄率</small><b style="color:${sr(cur) >= 0 ? 'var(--acc)' : 'var(--exp)'}">${sr(cur).toFixed(0)}%</b><span class="tx2">前月 ${sr(prevFull).toFixed(0)}%</span>${S.settings.srGoal ? `<span style="color:${sr(cur) >= S.settings.srGoal ? 'var(--acc)' : 'var(--exp)'}">目標 ${S.settings.srGoal}%・${sr(cur) >= S.settings.srGoal ? '達成' : '未達'}</span>` : ''}</div>
+    else main += monthCard26 + `<div class="card tap" onclick="openOvTbl()"><div class="ovk"><div><small>${isCur ? '本月' : ymS(cy, cm)} 儲蓄率</small><b style="color:${sr(cur) >= 0 ? 'var(--acc)' : 'var(--exp)'}">${sr(cur).toFixed(0)}%</b><span class="tx2">前月 ${sr(prevFull).toFixed(0)}%</span>${S.settings.srGoal ? `<span style="color:${sr(cur) >= S.settings.srGoal ? 'var(--acc)' : 'var(--exp)'}">目標 ${S.settings.srGoal}%・${sr(cur) >= S.settings.srGoal ? '達成' : '未達'}</span>` : ''}</div>
       <div><small>月均支出</small><b>${twd(avg)}</b><span class="tx2">前 ${done.length} 個月</span></div>
       <div><small>支出比上月</small><b style="color:${cp > 0 ? 'var(--exp)' : 'var(--acc)'}">${prevS.exp ? (cp > 0 ? '+' : '−') + Math.abs(cp).toFixed(0) + '%' : '—'}</b><span class="tx2">${isCur ? '同期比較' : '整月比較'}</span>${yoy}</div></div>${more}</div>`;
   }
   // 這個月變多的分類（比近 3 個月同期平均）；自訂區間：比前一段同長度
   let F0 = f0, T0 = t0, CUT = cut;
+  if (UX.ovFocus && !CR) { [F0,T0]=mRange(UX.ovFocus.y,UX.ovFocus.m);CUT=(T0>td?td:T0); }
   if (CR) { F0 = CR.from; T0 = CR.to; CUT = CR.cut; }
   const curC = catTotals(F0, CUT, 'expense'), base = {};
+  const [focusY,focusM]=UX.ovFocus&&!CR?[UX.ovFocus.y,UX.ovFocus.m]:[cy,cm];
   if (CR) { const len = diffD(CUT, F0), b1 = addD(F0, -1), b0 = addD(b1, -len), c = catTotals(b0, b1, 'expense'); for (const k in c) base[k] = c[k]; }
-  else monthsBack(cy, cm, 4).slice(0, 3).forEach(([y, m]) => { const c = catTotals(mRange(y, m)[0], isCur ? sameDayCut(y, m, td) : mRange(y, m)[1], 'expense'); for (const k in c) base[k] = (base[k] || 0) + c[k] / 3; });
+  else monthsBack(focusY, focusM, 4).slice(0, 3).forEach(([y, m]) => { const c = catTotals(mRange(y, m)[0], isCur ? sameDayCut(y, m, td) : mRange(y, m)[1], 'expense'); for (const k in c) base[k] = (base[k] || 0) + c[k] / 3; });
   const ups = Object.keys({...curC, ...base}).map(k => ({k, d:(curC[k] || 0) - (base[k] || 0)})).filter(x => x.d >= 100).sort((a, b) => b.d - a.d).slice(0, 3);
   const upCard = `<div class="sec"><h3>${CR ? '這段期間' : isCur ? '這個月' : ymS(cy, cm)} 變多的</h3><span class="sm tx2">${CR ? (addD(F0, -1 - diffD(CUT, F0)) < ((compute().list[0] || {}).date || td) ? '比前一段（資料不完整）' : '比前一段同長度期間') : `比前 3 個月${isCur ? '同期' : ''}平均`}</span></div><div class="list">${ups.length ? ups.map(x => { const c = S.data.categories[x.k];
     return `<button class="row" onclick="openCatRpt('${x.k}','${F0}','${T0}','expense')"><span class="cic" style="background:${c?.color || '#aaa'}">${ic(c?.icon || 'more',20)}</span><span class="mid"><b>${esc(c?.name || '未分類')}</b><small>${twd(curC[x.k] || 0)}・${CR ? '前一段' : '平均'} ${twd(base[x.k] || 0)}</small></span><span class="amt exp">+${twd(x.d)}</span></button>`; }).join('') : '<div class="empty">沒有明顯變多的分類 👍</div>'}</div>`;
@@ -2957,7 +3046,7 @@ function ymPick(y, m){
   else if (k === 'home') { const d = pd(S.ui.sel).getDate(); selDay(ds(new Date(y, m, Math.min(d, dim(y, m))))); }
   else if (k === 'am') { S.ui.am = {y, m}; render(); }
   else if (k === 'stmt') { const a = S.data.accounts[STM.aid]; STM.close = cycDate(a, y, m); redraw('stmt'); }
-  else { S.ui.rp.y = y; S.ui.rp.m = m; UX.ovSel = null; render(); }
+  else { S.ui.rp.y = y; S.ui.rp.m = m; UX.ovSel = null; UX.ovFocus=null; render(); }
 }
 /* 圓餅點選 */
 function donutPick(id){ UX.dsel = UX.dsel === id ? null : id; render(); LAYERS.forEach(drawLayer); }
@@ -3041,13 +3130,13 @@ function viewReports(){
       const n = dim(r.y, r.m), days = [...Array(n)].map((_, i) => summary(ds(new Date(r.y, r.m, i + 1)), ds(new Date(r.y, r.m, i + 1))));
       const s = summary(from, to), passed = r.y === new Date().getFullYear() && r.m === new Date().getMonth() ? new Date().getDate() : n;
       const act = days.map((d, i) => ({...d, i})).filter(d => d.inc || d.exp).reverse();
-      body = `${periodBar()}<div class="card">${bars(days.map((_, i) => i + 1), [{vals:days.map(d => d.inc), color:'var(--inc)'}, {vals:days.map(d => d.exp), color:'var(--exp)'}], 5)}
+      body = `${periodBar()}<div class="card">${reportDayBars26(r.y,r.m)}
         <div class="legend"><span><i style="background:var(--inc)"></i>收入</span><span><i style="background:var(--exp)"></i>支出</span></div></div>
         <div class="card"><div class="kv"><div><small>收入</small><b class="inc">${twd(s.inc)}</b></div><div><small>支出</small><b class="exp">${twd(s.exp)}</b></div>
         <div><small>結餘</small><b>${twd(s.inc - s.exp)}</b></div><div><small>日均支出</small><b>${twd(s.exp / passed)}</b></div></div></div>
         <div class="sec"><h3>每日收支</h3><span class="sm tx2">點日期看明細</span></div>
         <div class="card mt0" style="margin-top:0"><table class="tbl"><tr><th>日期</th><th>收入</th><th>支出</th><th>結餘</th></tr>
-        ${act.length ? act.map(d => { const x = ds(new Date(r.y, r.m, d.i + 1)); return `<tr onclick="S.ui.sel='${x}';go('home')" style="cursor:pointer"><td>${d.i + 1} 日（${WD[pd(x).getDay()]}）</td><td class="inc">${d.inc ? twd(d.inc) : ''}</td><td class="exp">${d.exp ? twd(d.exp) : ''}</td><td class="${d.inc - d.exp < 0 ? 'exp' : ''}">${twd(d.inc - d.exp)}</td></tr>`; }).join('') : '<tr><td colspan="4" class="tx2" style="text-align:center">沒有紀錄</td></tr>'}</table></div>`;
+        ${act.length ? act.map(d => { const x = ds(new Date(r.y, r.m, d.i + 1)); return `<tr onclick="reportDayOpen('${x}')" style="cursor:pointer"><td>${d.i + 1} 日（${WD[pd(x).getDay()]}）</td><td class="inc">${d.inc ? twd(d.inc) : ''}</td><td class="exp">${d.exp ? twd(d.exp) : ''}</td><td class="${d.inc - d.exp < 0 ? 'exp' : ''}">${twd(d.inc - d.exp)}</td></tr>`; }).join('') : '<tr><td colspan="4" class="tx2" style="text-align:center">沒有紀錄</td></tr>'}</table></div>`;
     }
   } else if (r.seg === 'budget') {
     body = viewBudget();
