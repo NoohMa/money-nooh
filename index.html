@@ -283,7 +283,7 @@ body{zoom:var(--z)}
 .login h1{font-size:34px;color:var(--pri);margin:0 0 6px;letter-spacing:2px}
 .ghost-sortable{opacity:.4}
 
-/* Money V3 demo: 櫻花粉主色、湖水綠輔色、單色按鈕 */
+/* Money V3: 櫻花粉主色、湖水綠輔色、單色按鈕 */
 :root{--pri:#F58EB3;--acc:#57C9C7;--pri-s:#FFE7F0;--acc-s:#E7FBF8;--bg:#FFF8FB;--card:#FFFFFF;--tx:#2D2430;--tx2:#8F7F89;--line:#F2E8ED;--exp:#C94150;--inc:#2376AA;--sh:0 3px 14px rgba(144,75,101,.09)}
 [data-mode=dark]{--bg:#191619;--card:#262126;--tx:#F8F1F5;--tx2:#B6A5B1;--line:#443740;--exp:#FF8B96;--inc:#78C7F1;--sh:0 3px 14px rgba(0,0,0,.15)}
 html,body{background:var(--bg)}
@@ -354,7 +354,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'V3 demo 完整連動版';
+const VERSION = 'V3';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -816,7 +816,7 @@ function effMode(){
 setInterval(() => { if (P.mode === 'time' && document.documentElement.dataset.mode !== effMode()) applyTheme(); }, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) applyTheme(); });
 function applyTheme(){
-  const th = {pri:'#F58EB3', acc:'#57C9C7'}; // V3 demo visual-only palette
+  const th = {pri:'#F58EB3', acc:'#57C9C7'}; // V3 visual palette
   const dark = effMode() === 'dark', r = document.documentElement;
   r.dataset.mode = dark ? 'dark' : 'light';
   r.style.setProperty('--pri', th.pri); r.style.setProperty('--acc', th.acc);
