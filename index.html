@@ -395,7 +395,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'V3.11';
+const VERSION = 'V3.12';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -4072,7 +4072,7 @@ function boot(){
   }
   refreshRates();
 }
-/* 返回：Android 返回鍵／手勢、瀏覽器上一頁、iPhone 主畫面 App 從左邊緣右滑 */
+/* 返回：返回按鈕、瀏覽器／系統歷史返回；不處理自訂全域右滑 */
 let lastBackAt = 0;
 function canGoBack(){ return !LOCKED && (LAYERS.length > 0 || NAVSTK.length > 0 || S.ui.tab !== 'home'); }
 function goBack(fast){
@@ -4100,34 +4100,8 @@ addEventListener('popstate', () => {
     try { history.pushState({guard:1}, ''); } catch(e) {}
   } else history.back();
 });
-(function(){
-  // 僅安裝至主畫面的 PWA 接管觸控返回。Safari 頁籤交給系統原生返回手勢。
-  const standalone = navigator.standalone === true ||
-    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-  if (!standalone) return;
-  let startX = null, startY = null, tracking = false, horizontal = false;
-  const reset = () => { startX = startY = null; tracking = horizontal = false; };
-  addEventListener('touchstart', e => {
-    if (e.touches.length !== 1 || !canGoBack()) return reset();
-    const t = e.touches[0];
-    if (t.clientX > 36 || e.target.closest('input,textarea,select,[contenteditable],.kp,[data-sw]')) return reset();
-    startX = t.clientX; startY = t.clientY; tracking = true; horizontal = false;
-  }, {passive:true});
-  addEventListener('touchmove', e => {
-    if (!tracking || e.touches.length !== 1) return;
-    const t = e.touches[0], dx = t.clientX - startX, dy = Math.abs(t.clientY - startY);
-    if (dx > 14 && dx > dy * 1.6) horizontal = true;
-    // 僅已確認的橫向右滑攔截預設滾動，長距離滑動也使用同一條返回路徑。
-    if (horizontal && e.cancelable) e.preventDefault();
-  }, {passive:false});
-  addEventListener('touchend', e => {
-    if (!tracking || !canGoBack() || e.changedTouches.length !== 1) return reset();
-    const t = e.changedTouches[0], dx = t.clientX - startX, dy = Math.abs(t.clientY - startY);
-    reset();
-    if (dx >= 55 && dy < 60 && dx > dy * 1.6) goBack(true);
-  }, {passive:true});
-  addEventListener('touchcancel', reset, {passive:true});
-})();
+/* V3.12：停用全域自訂右滑返回。保留 Safari/iOS 原生歷史手勢與返回鍵。
+   不攔截 touchmove，避免與原生邊緣手勢衝突。 */
 
 /* 離開 App 再回來：回到首頁＋今天（停靠點）。正在記帳且已輸入內容時保留，避免資料遺失 */
 let awayAt = 0, BUSY_UNTIL = 0;
