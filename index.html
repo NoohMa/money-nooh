@@ -395,7 +395,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'V3.4';
+const VERSION = 'V3.5';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -911,7 +911,13 @@ function closeLayer(key, instant){
   if (instant) L.el.remove();
   else { L.el.classList.remove('on'); L.el.style.pointerEvents = 'none'; setTimeout(() => L.el.remove(), 180); }
 }
-const sheet = (key, title, body) => `<div class="bd" onclick="closeLayer('${key}')"></div><div class="sh"><div class="hd"><span>${title}</span><button class="mini" onclick="closeLayer('${key}')">${ic('x',20)}</button></div><div class="bdy">${body}</div></div>`;
+function layerBack(key){
+  const top = LAYERS[LAYERS.length - 1];
+  if (!top) return goBack();
+  if (top.key === key) return goBack();
+  return false; // 背景層按鈕不影響前景子層
+}
+const sheet = (key, title, body) => `<div class="bd" onclick="layerBack('${key}')"></div><div class="sh"><div class="hd"><span>${title}</span><button class="mini" onclick="layerBack('${key}')">${ic('x',20)}</button></div><div class="bdy">${body}</div></div>`;
 
 /* ---------- render ---------- */
 function render(){
@@ -4088,24 +4094,25 @@ addEventListener('popstate', () => {
   else history.back();
 });
 (function(){
+  // Safari 主畫面模式使用觸控右滑；一般瀏覽器和 Android 由系統返回鍵處理。
   if (navigator.standalone !== true) return;
-  let x0 = null, y0 = null, target = null;
-  const reset = () => { x0 = y0 = target = null; };
+  let startX = null, startY = null;
+  const reset = () => { startX = startY = null; };
   addEventListener('touchstart', e => {
     if (e.touches.length !== 1 || !canGoBack()) return reset();
     const t = e.touches[0];
-    if (t.clientX > 28 || e.target.closest('input,textarea,select,[contenteditable],.kp')) return reset();
-    x0 = t.clientX; y0 = t.clientY; target = e.target;
+    if (t.clientX > 28 || e.target.closest('input,textarea,select,[contenteditable],.kp,[data-sw]')) return reset();
+    startX = t.clientX; startY = t.clientY;
   }, {passive:true});
   addEventListener('touchend', e => {
-    if (x0 === null || !canGoBack()) return reset();
-    const t = e.changedTouches[0], dx = t.clientX-x0, dy = Math.abs(t.clientY-y0);
+    if (startX === null || !canGoBack() || e.changedTouches.length !== 1) return reset();
+    const t = e.changedTouches[0], dx = t.clientX - startX, dy = Math.abs(t.clientY - startY);
     reset();
-    // 左緣開始的明確水平右滑才返回，與右上/左上返回鍵共用 goBack
-    if (dx >= 85 && dy < 60 && dx > dy*1.6) goBack();
+    // 只在手勢結束後回上一層，避免橫向圖表、垂直捲動或輸入時誤退。
+    if (dx >= 85 && dy < 60 && dx > dy * 1.6) goBack();
   }, {passive:true});
   addEventListener('touchcancel', reset, {passive:true});
-})();
+})();;
 
 /* 離開 App 再回來：回到首頁＋今天（停靠點）。正在記帳且已輸入內容時保留，避免資料遺失 */
 let awayAt = 0, BUSY_UNTIL = 0;
