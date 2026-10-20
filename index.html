@@ -395,7 +395,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'V3.10';
+const VERSION = 'V3.11';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -4092,30 +4092,42 @@ function goBack(fast){
 }
 try { history.replaceState({base:1}, ''); history.pushState({guard:1}, ''); } catch(e) {}
 addEventListener('popstate', () => {
-  if (canGoBack()) { goBack(); try { history.pushState({guard:1}, ''); } catch(e) {} }
-  else if (LOCKED) { try { history.pushState({guard:1}, ''); } catch(e) {} }
-  else history.back();
+  // Safari/瀏覽器原生返回：由 popstate 單獨處理，避免與自訂觸控同時返回。
+  if (canGoBack()) {
+    goBack(true);
+    try { history.pushState({guard:1}, ''); } catch(e) {}
+  } else if (LOCKED) {
+    try { history.pushState({guard:1}, ''); } catch(e) {}
+  } else history.back();
 });
 (function(){
-  // Safari 主畫面模式使用觸控右滑；一般瀏覽器和 Android 由系統返回鍵處理。
-  if (!(navigator.standalone === true || /iP(hone|ad|od)/.test(navigator.userAgent))) return;
-  let startX = null, startY = null;
-  const reset = () => { startX = startY = null; };
+  // 僅安裝至主畫面的 PWA 接管觸控返回。Safari 頁籤交給系統原生返回手勢。
+  const standalone = navigator.standalone === true ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if (!standalone) return;
+  let startX = null, startY = null, tracking = false, horizontal = false;
+  const reset = () => { startX = startY = null; tracking = horizontal = false; };
   addEventListener('touchstart', e => {
     if (e.touches.length !== 1 || !canGoBack()) return reset();
     const t = e.touches[0];
     if (t.clientX > 36 || e.target.closest('input,textarea,select,[contenteditable],.kp,[data-sw]')) return reset();
-    startX = t.clientX; startY = t.clientY;
+    startX = t.clientX; startY = t.clientY; tracking = true; horizontal = false;
   }, {passive:true});
+  addEventListener('touchmove', e => {
+    if (!tracking || e.touches.length !== 1) return;
+    const t = e.touches[0], dx = t.clientX - startX, dy = Math.abs(t.clientY - startY);
+    if (dx > 14 && dx > dy * 1.6) horizontal = true;
+    // 僅已確認的橫向右滑攔截預設滾動，長距離滑動也使用同一條返回路徑。
+    if (horizontal && e.cancelable) e.preventDefault();
+  }, {passive:false});
   addEventListener('touchend', e => {
-    if (startX === null || !canGoBack() || e.changedTouches.length !== 1) return reset();
+    if (!tracking || !canGoBack() || e.changedTouches.length !== 1) return reset();
     const t = e.changedTouches[0], dx = t.clientX - startX, dy = Math.abs(t.clientY - startY);
     reset();
-    // 只在手勢結束後回上一層，避免橫向圖表、垂直捲動或輸入時誤退。
-    if (dx >= 55 && dy < 60 && dx > dy * 1.6) goBack();
+    if (dx >= 55 && dy < 60 && dx > dy * 1.6) goBack(true);
   }, {passive:true});
   addEventListener('touchcancel', reset, {passive:true});
-})();;
+})();
 
 /* 離開 App 再回來：回到首頁＋今天（停靠點）。正在記帳且已輸入內容時保留，避免資料遺失 */
 let awayAt = 0, BUSY_UNTIL = 0;
