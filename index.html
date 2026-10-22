@@ -395,7 +395,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'V3.15';
+const VERSION = 'V3.17';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -2274,7 +2274,7 @@ function viewOverview(){
     <button class="card" style="width:calc(100% - 32px);text-align:left;display:block;margin-top:0" onclick="SR={q:'',type:'expense',acc:'',cat:'',proj:'',from:'${F0}',to:'${CUT}',min:'',max:'${SM}',limit:100,more:true};openSearch()">
     <div class="ovk"><div><small>筆數</small><b>${sm.length} 筆</b></div><div><small>合計</small><b class="exp">${twd(smT)}</b></div><div><small>${CR ? '各月' : '近 6 個月'}</small>${sparkline(pm6)}</div></div>
     <div class="sm tx2" style="margin-top:8px">最常：${topS.map(([k, n]) => `${esc(k)} ${n} 筆`).join('・') || '—'}　看明細 ›</div></button>`;
-  return `${CR ? `<div class="rbar"><span></span><div class="nav2"><span class="ymt" onclick="openOvRange()">${CR.label} ▾</span></div></div>` : monthNav()}${chips}${main}${upCard}${smCard}<div style="height:10px"></div>`;
+  return `${CR ? `<div class="rbar"><span></span><div class="nav2"><span class="ymt" onclick="openOvRange()">${CR.label} ▾</span></div></div>` : monthNav()}${chips}<button class="card" style="width:calc(100% - 32px);display:flex;align-items:center;gap:10px;text-align:left" onclick="openAna()">${ic('pie',20)}<span style="flex:1"><b>生活費・分類分析</b><br><small class="tx2">每月生活費多少、各分類收支、代墊收回了沒</small></span>${ic('right',18)}</button>${main}${upCard}${smCard}<div style="height:10px"></div>`;
 }
 const p2 = n => String(n).padStart(2, '0');
 /* v2.34 總覽自訂區間（起訖月份） */
@@ -2942,6 +2942,7 @@ function bpData(){
       const key = 'cb_' + a.id + '_' + o.date + '_' + o.name; let use = 0;
       if (a.id === BP.card && !BP.off.has(key)) { use = Math.min(left, o.amt); left -= use; }
       outs.push({key, name:`${a.name} ${o.name}`, date:o.date, amt:o.amt, aid:a.payAcct || '', use, src:'卡費'}); }); }
+  if (+S.settings.lifeMonthly > 0) outs.push({key:'life_est', name:'生活費（估）', date:'', amt:Math.round(+S.settings.lifeMonthly * Math.max(1, diffD(to, td)) / 30), aid:'', src:`每月 ${twd(+S.settings.lifeMonthly)} 依天數換算・來自分析`});
   for (const m of bpItems()) if ((!m.date || inWin(m.date)) && cashA(m.aid || '')) outs.push({key:'m_' + m.id, name:m.name, date:m.date || '', amt:+m.amt || 0, aid:m.aid || '', man:m, mk:'out', src:'自己填的'});
   for (let i = ins.length - 1; i >= 0; i--) if (ins[i].man && !cashA(ins[i].aid)) ins.splice(i, 1);
   const val = it => { const v = bpNum(BP.ov[it.key]); return v !== null ? v : it.amt; };
@@ -3003,6 +3004,199 @@ function renderBP(){
       ${addRow('out', '新增必繳（例：房租、電話）')}</div>
     <div class="hint">自動帶入：固定收支、購買試算的預計進帳／預估支出、發薪前到期的卡費（只算從可動用帳戶付的）；可取消勾選或改金額。自己新增的進帳、必繳會記住，下次打開還在（日期不在期間內的不算）。只是試算，不會記帳。</div>
     <div style="height:30px"></div></div></div>`;
+}
+/* V3.16 生活費・分類分析：只讀分析，不改金額；類型設定存 S.settings.catType，單筆覆寫存在紀錄的 atype */
+const ATYPE = {life:'生活', fixed:'固定', oneoff:'一次性／大額', pass:'代墊／轉手', ignore:'不計', salary:'經常收入', extra:'非經常收入', refund:'退款（扣生活費）'};
+const ATYPE_EXP = ['life', 'fixed', 'oneoff', 'pass', 'ignore'], ATYPE_INC = ['salary', 'extra', 'refund', 'pass', 'ignore'];
+let AN = {n:12, mode:'buy', tab:'life'};
+function anSet(k, v){ AN[k] = v; P.an = {n:AN.n, mode:AN.mode, tab:AN.tab}; savePrefs(); redraw('ana'); }
+const bigMin = () => +S.settings.bigMin || 3000;
+function catTypeDef(id){
+  const c = S.data.categories[id]; if (!c) return null;
+  const nm = c.name || '', pn = c.parent ? (S.data.categories[c.parent]?.name || '') : '';
+  if (/代墊/.test(nm) || /代墊/.test(pn)) return 'pass';
+  if (c.type === 'income') { if (/回饋/.test(nm)) return 'ignore'; if (/退款/.test(nm)) return 'refund'; if (/薪/.test(nm)) return 'salary'; return 'extra'; }
+  return isFixed(id) ? 'fixed' : 'life';
+}
+function catType(id){ const m = S.settings.catType || {}, c = S.data.categories[id]; if (!c) return null; return m[id] || (c.parent && m[c.parent]) || catTypeDef(id); }
+function txTotal(t){ return t.amount + instFee(t) + fxFee(t); }
+function etype(t, cat){
+  if (t.atype) return t.atype;
+  const ct = catType(cat) || (t.type === 'income' ? 'extra' : 'life');
+  if (ct === 'life' && t.type === 'expense' && cat === t.catId) { const w = compute().tw[t.id], tot = w ? w.amt + w.fee : txTotal(t); if (tot >= bigMin()) return 'oneoff'; }
+  return ct;
+}
+let ANC = {key:'', v:null};
+function anRows(){   // 每筆 → {t, date, cat, amt(台幣，支出正數), ty}
+  const key = VER + '|' + AN.mode + '|' + bigMin() + '|' + JSON.stringify(S.settings.catType || {});
+  if (ANC.key === key) return ANC.v;
+  const out = [], c = compute();
+  for (const f of c.flows) {
+    const t = f.t; if (!t || t.plan) { if (f.cat) out.push({t, date:f.date, cat:f.cat, amt:f.amt, ty:catType(f.cat) || 'life', io:'expense'}); continue; }
+    const isInst = t.type === 'expense' && t.inst && t.inst.n > 1 && f.cat === t.catId && f.k === undefined;
+    if (isInst && AN.mode === 'inst') {
+      const r = f.amt / (f.o || 1);
+      for (const p of instPieces(t)) out.push({t, date:p.date, cat:t.catId, amt:p.amt * r, ty:etype(t, t.catId), io:'expense', k:p.k});
+      continue;
+    }
+    out.push({t, date:f.date, cat:f.cat, amt:f.amt, ty:etype(t, f.cat), io:f.type});
+  }
+  ANC = {key, v:out}; return out;
+}
+function anMonths(){
+  const n = new Date(), list = [], first = (compute().list[0] || {}).date || today(), fm = first.slice(0, 7);
+  for (let i = AN.n; i >= 1; i--) { const d = new Date(n.getFullYear(), n.getMonth() - i, 1), ym = `${d.getFullYear()}-${p2(d.getMonth() + 1)}`; if (ym > fm) list.push(ym); }
+  return list;
+}
+const med = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+const q75 = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y), i = (s.length - 1) * .75, lo = Math.floor(i); return s[lo] + (s[Math.min(lo + 1, s.length - 1)] - s[lo]) * (i - lo); };
+function anData(){
+  const ms = anMonths(), rows = anRows(), td = today(), curM = td.slice(0, 7), from = ms.length ? ms[0] + '-01' : curM + '-01', to = td;
+  const by = {}, cat = {}, pass = {out:0, in:0};
+  for (const m of [...ms, curM]) by[m] = {salary:0, extra:0, life:0, fixed:0, oneoff:0, refund:0, passOut:0, passIn:0};
+  for (const r of rows) { if (r.date < from || r.date > to) continue; const m = r.date.slice(0, 7), b = by[m]; if (!b) continue;
+    if (r.ty === 'ignore') continue;
+    if (r.io === 'expense') { if (r.ty === 'pass') { b.passOut += r.amt; pass.out += r.amt; } else if (b[r.ty] !== undefined) b[r.ty] += r.amt; else b.life += r.amt; }
+    else { if (r.ty === 'pass') { b.passIn += r.amt; pass.in += r.amt; } else if (r.ty === 'refund') b.refund += r.amt; else if (r.ty === 'salary' || r.ty === 'extra') b[r.ty] += r.amt; else b.extra += r.amt; }
+    const ck = r.io + '|' + r.ty + '|' + mainId(r.cat), x = cat[ck] || (cat[ck] = {io:r.io, ty:r.ty, id:mainId(r.cat), m:{}});
+    x.m[m] = (x.m[m] || 0) + (r.io === 'expense' ? r.amt : r.amt); }
+  for (const m of [...ms, curM]) { const b = by[m]; b.lifeNet = Math.max(0, b.life - b.refund); b.save = b.salary - b.lifeNet - b.fixed; }
+  const col = k => ms.map(m => by[m][k]);
+  const cats = Object.values(cat).map(x => { const v = ms.map(m => x.m[m] || 0); return {...x, v, med:med(v), avg:avg(v), p75:q75(v), last:v[v.length - 1] || 0, cur:x.m[curM] || 0, tot:v.reduce((a, b) => a + b, 0)}; }).filter(x => x.tot || x.cur).sort((a, b) => b.tot - a.tot);
+  const used = {}; for (const r of rows) if (r.date >= from && r.date < curM + '-01' && r.io === 'expense') used[r.cat] = (used[r.cat] || 0) + 1;
+  const totExp = cats.filter(x => x.io === 'expense').reduce((s, x) => s + x.tot, 0);
+  const hints = [];
+  for (const x of cats) { const c = S.data.categories[x.id]; if (x.io === 'expense' && c && /其他|雜/.test(c.name) && totExp && x.tot / totExp > .1) hints.push(`「${c.name}」占支出 ${Math.round(x.tot / totExp * 100)}%，可以拆到更明確的分類`); }
+  for (const [id, n] of Object.entries(used)) { const c = S.data.categories[id]; if (c && n <= 2 && ms.length >= 6 && !['pass', 'ignore'].includes(catType(id))) hints.push(`「${c.parent ? (S.data.categories[c.parent]?.name || '') + '＞' : ''}${c.name}」${ms.length} 個月只用過 ${n} 次`); }
+  const dn = pd(td).getDate(), dm = dim(pd(td).getFullYear(), pd(td).getMonth());
+  return {ms, by, col, cats, pass, curM, cur:by[curM], dn, dm, hints:hints.slice(0, 8), lifeP75:q75(col('lifeNet')),
+    lifeMed:med(col('lifeNet')), lifeAvg:avg(col('lifeNet')), fixMed:med(col('fixed')), salMed:med(col('salary')), saveMed:med(col('save'))};
+}
+function openAna(){ if (P.an) Object.assign(AN, P.an); openLayer('ana', renderAna, 'full'); }
+function anaSetLife(v){ putSettings({lifeMonthly:Math.round(v)}); toast(`已帶入：每月生活費 ${twd(v)}，發薪前試算會依天數換算`); redraw('ana'); }
+function anaCopy(){
+  const d = anData(), L = [];
+  L.push(`我的記帳分析（近 ${d.ms.length} 個月：${d.ms[0] || ''}～${d.ms[d.ms.length - 1] || ''}，分期${AN.mode === 'inst' ? '依每期攤' : '依消費日'}，單筆 ${nf(bigMin())} 以上算一次性，回饋不計）`);
+  L.push('月份｜經常收入｜生活｜固定｜一次性｜非經常收入｜可存下');
+  for (const m of d.ms) { const b = d.by[m]; L.push(`${m}｜${nf(Math.round(b.salary))}｜${nf(Math.round(b.lifeNet))}｜${nf(Math.round(b.fixed))}｜${nf(Math.round(b.oneoff))}｜${nf(Math.round(b.extra))}｜${nf(Math.round(b.save))}`); }
+  L.push(`生活費中位數 ${nf(Math.round(d.lifeMed))}、平均 ${nf(Math.round(d.lifeAvg))}；固定中位數 ${nf(Math.round(d.fixMed))}；經常收入中位數 ${nf(Math.round(d.salMed))}`);
+  { const P2 = passLedger(); L.push(`代墊（全部期間）：付出 ${nf(Math.round(P2.outT))}、收回 ${nf(Math.round(P2.inT))}、還沒收回 ${nf(Math.round(P2.outs.reduce((s, x) => s + x.left, 0)))}`); }
+  L.push(`生活費保守值（75 百分位）${nf(Math.round(d.lifeP75))}；本月至今生活 ${nf(Math.round(d.cur.lifeNet))}`);
+  L.push('各分類（每月中位數／平均）：');
+  for (const x of d.cats.filter(x => x.io === 'expense' && x.ty !== 'pass').slice(0, 25)) L.push(`- [${ATYPE[x.ty] || x.ty}] ${S.data.categories[x.id]?.name || '未分類'}：${nf(Math.round(x.med))}／${nf(Math.round(x.avg))}`);
+  L.push('請幫我分析生活費結構、哪些可以省、每月建議預算。');
+  const txt = L.join('\n');
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('已複製，貼給 Claude 就可以')).catch(() => { prompt('複製下面文字', txt); });
+}
+function renderAna(){
+  const d = anData(), A = d.ms, sm = 'font-size:12px', f0 = v => twd(v);
+  const tbl = `<table class="tbl" style="${sm}"><tr><th>月份</th><th>經常收入</th><th>生活</th><th>固定</th><th>一次性</th><th>可存下</th></tr>
+    ${A.map(m => { const b = d.by[m]; return `<tr><td>${m.slice(2).replace('-', '/')}</td><td class="inc">${f0(b.salary)}</td><td class="b">${f0(b.lifeNet)}</td><td>${f0(b.fixed)}</td><td class="tx2">${f0(b.oneoff)}</td><td class="${b.save < 0 ? 'exp' : 'inc'}">${f0(b.save)}</td></tr>`; }).join('')}
+    ${(b => `<tr style="opacity:.6"><td>本月至今</td><td>${f0(b.salary)}</td><td>${f0(b.lifeNet)}</td><td>${f0(b.fixed)}</td><td>${f0(b.oneoff)}</td><td>${f0(b.save)}</td></tr>`)(d.cur)}
+    <tr><td class="b">中位數</td><td>${f0(d.salMed)}</td><td class="b">${f0(d.lifeMed)}</td><td>${f0(d.fixMed)}</td><td></td><td>${f0(d.saveMed)}</td></tr></table>`;
+  const tabs = [['life', '生活'], ['fixed', '固定'], ['oneoff', '一次性'], ['pass', '代墊'], ['inc', '收入']];
+  const list = d.cats.filter(x => AN.tab === 'inc' ? (x.io === 'income' && x.ty !== 'pass') : (x.io === 'expense' && x.ty === AN.tab) || (AN.tab === 'pass' && x.ty === 'pass'));
+  const mx = Math.max(1, ...list.flatMap(x => x.v));
+  const rows = list.map(x => { const c = S.data.categories[x.id];
+    return `<button class="row" onclick="openAnaCat('${x.io}','${x.ty}','${x.id}')"><span class="cic" style="background:${c?.color || '#aaa'}">${ic(c?.icon || 'more',18)}</span><span class="mid"><b>${esc(c?.name || '未分類')}${x.io === 'income' || AN.tab === 'pass' ? ` <span class="ilst">${ATYPE[x.ty]}</span>` : ''}</b><small>中位數 ${f0(x.med)}・平均 ${f0(x.avg)}・本月至今 <span class="${x.io === 'expense' && x.med && x.cur > x.med ? 'exp' : ''}">${f0(x.cur)}</span></small>
+      <svg viewBox="0 0 ${x.v.length * 8} 20" style="width:100%;height:18px;display:block;margin-top:3px" preserveAspectRatio="none">${x.v.map((v, i) => `<rect x="${i * 8 + 1}" y="${20 - v / mx * 20}" width="6" height="${v / mx * 20}" fill="${c?.color || '#aaa'}" opacity=".7"/>`).join('')}</svg></span><span class="amt">${f0(x.tot)}<small>合計</small></span></button>`; }).join('');
+  return `<div class="lin"><div class="lhd"><button class="ib" onclick="closeLayer('ana')">${ic('left',24)}</button><h2>生活費・分類分析</h2><button class="ib" onclick="openAnaType()" title="類型設定">${ic('gear',22)}</button></div><div class="fscroll">
+    <div class="fxc" style="margin:4px 16px 0">${[6, 12].map(n => `<button class="${AN.n === n ? 'on' : ''}" onclick="anSet('n',${n})">近 ${n} 個月</button>`).join('')}
+      <button class="${AN.mode === 'buy' ? 'on' : ''}" onclick="anSet('mode','buy')">分期依消費日</button><button class="${AN.mode === 'inst' ? 'on' : ''}" onclick="anSet('mode','inst')">分期依每期攤</button></div>
+    <div class="card"><div class="kv"><div><small>每月生活費（中位數）</small><b style="font-size:24px">${f0(d.lifeMed)}</b></div><div><small>保守值（多數月份不會超過）</small><b style="font-size:24px;color:var(--exp)">${f0(d.lifeP75)}</b></div></div>
+      <div class="sm tx2" style="margin-top:4px">已扣退款・平均 ${f0(d.lifeAvg)}・固定 ${f0(d.fixMed)}・經常收入 ${f0(d.salMed)}・每月可存下約 ${f0(d.saveMed)}</div>
+      <div class="sm" style="margin-top:6px">本月至今（${d.dn}/${d.dm} 天）：生活 <b class="${d.cur.lifeNet > d.lifeMed ? 'exp' : ''}">${f0(d.cur.lifeNet)}</b>／通常 ${f0(d.lifeMed)}</div>
+      <div class="two" style="margin-top:10px"><button class="btn sec2" style="padding:9px" onclick="anaSetLife(${Math.round(d.lifeP75)})">帶進發薪前試算（保守值）</button><button class="btn sec2" style="padding:9px" onclick="anaCopy()">複製給 Claude</button></div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px"><button class="sm" style="color:var(--acc);font-weight:600" onclick="anaSetLife(${Math.round(d.lifeMed)})">改用中位數帶入</button><button class="sm" style="color:var(--acc);font-weight:600" onclick="anaBudget()">中位數設成預算 ›</button></div>
+      ${S.settings.lifeMonthly ? `<div class="sm tx2" style="margin-top:6px">目前發薪前試算用：每月 ${f0(S.settings.lifeMonthly)} <button style="color:var(--acc)" onclick="putSettings({lifeMonthly:null});redraw('ana')">清除</button></div>` : ''}</div>
+    <div class="card" style="padding:10px 8px;overflow-x:auto">${A.length ? tbl : '<div class="empty">資料還不到一個完整月份</div>'}
+      <div class="sm tx2" style="margin-top:6px">本月至今只列出參考，不算進中位數；單筆 ${nf(bigMin())} 以上算一次性 <button style="color:var(--acc)" onclick="anaBig()">改</button>；回饋不計；可存下＝經常收入－生活－固定</div></div>
+    ${(() => { const L = passLedger(); if (!L.outs.length && !L.ins.length) return ''; const open = L.outs.filter(x => x.left >= 1);
+      return `<button class="card" style="width:calc(100% - 32px);display:block;text-align:left" onclick="openPass()"><div style="display:flex;justify-content:space-between"><b>代墊（全部期間）</b><span class="tx2">明細 ›</span></div>
+        <div class="kv" style="margin-top:6px"><div><small>付出</small><b>${f0(L.outT)}</b></div><div><small>收回</small><b>${f0(L.inT)}</b></div></div>
+        <div class="sm ${open.length ? 'exp' : 'tx2'}" style="margin-top:4px">${open.length ? `${open.length} 筆還沒收回，共 ${f0(open.reduce((s, x) => s + x.left, 0))}` : '已全部收回'}${L.extra >= 1 ? `・多收 ${f0(L.extra)}` : ''}</div></button>`; })()}
+    <div class="segw"><div class="seg">${tabs.map(([k, l]) => `<button class="${AN.tab === k ? 'on' : ''}" onclick="anSet('tab','${k}')">${l}</button>`).join('')}</div></div>
+    <div class="list">${rows || '<div class="empty">沒有資料</div>'}</div>
+    ${d.hints.length ? `<div class="sec"><h3>整理提示</h3></div><div class="card mt0" style="margin-top:0">${d.hints.map(h => `<div class="sm" style="padding:3px 0">・${esc(h)}</div>`).join('')}</div>` : ''}
+    <div class="hint">點分類看每個月與每一筆，單筆可以改類型。右上 ⚙ 設定每個分類算哪一類。只是分析，不會改金額。</div><div style="height:30px"></div></div></div>`;
+}
+function anaBig(){ const v = parseInt(prompt('單筆多少以上算一次性／大額？', bigMin())); if (v > 0) { putSettings({bigMin:v}); redraw('ana'); } }
+let ANX = null;
+function openAnaCat(io, ty, id){ ANX = {io, ty, id, m:null, sub:''}; openLayer('anac', renderAnaCat, 'full'); }
+function anaSetT(tid, v){ const t = S.data.txns[tid]; if (!t) return; const x = {...t}; if (v) x.atype = v; else delete x.atype; put('txns', x, true); redraw('anac'); redraw('ana'); }
+function renderAnaCat(){
+  const d = anData(), c = S.data.categories[ANX.id], rows = anRows();
+  const mine0 = r => r.io === ANX.io && r.ty === ANX.ty && mainId(r.cat) === ANX.id, mine = r => mine0(r) && (!ANX.sub || r.cat === ANX.sub);
+  const months = [d.curM, ...d.ms.slice().reverse()], subs = {};
+  for (const r of rows) if (mine0(r)) { const m = r.date.slice(0, 7); if (m !== d.curM && !d.ms.includes(m)) continue; const s = subs[r.cat] || (subs[r.cat] = {}); s[m] = (s[m] || 0) + r.amt; }
+  const subL = Object.entries(subs).map(([id, mm]) => { const v = d.ms.map(m => mm[m] || 0); return {id, med:med(v), cur:mm[d.curM] || 0, tot:v.reduce((a, b) => a + b, 0)}; }).sort((a, b) => b.tot - a.tot);
+  const subHtml = subL.length > 1 ? `<div class="sec"><h3>子分類</h3><span class="sm tx2">點一下只看那個</span></div><div class="list">${subL.map(x => { const c0 = S.data.categories[x.id];
+    return `<button class="row ${ANX.sub === x.id ? 'hl' : ''}" onclick="ANX.sub=ANX.sub==='${x.id}'?'':'${x.id}';ANX.m=null;redraw('anac')"><span class="mid"><b>${esc(c0?.name || '未分類')}</b><small>中位數 ${twd(x.med)}・本月至今 <span class="${x.med && x.cur > x.med ? 'exp' : ''}">${twd(x.cur)}</span></small></span><span class="amt">${twd(x.tot)}<small>合計</small></span></button>`; }).join('')}</div>` : '';
+  const body = months.map(m => { const its = rows.filter(r => mine(r) && r.date.slice(0, 7) === m), tot = its.reduce((s, r) => s + r.amt, 0), open = ANX.m === m;
+    return `<button class="row" onclick="ANX.m=ANX.m==='${m}'?null:'${m}';redraw('anac')"><span class="mid"><b>${m.replace('-', '/')}${m === d.curM ? '（本月至今）' : ''}</b><small>${its.length} 筆</small></span><span class="amt">${twd(tot)}</span>${ic(open ? 'down' : 'right',16)}</button>
+      ${open ? its.sort((a, b) => a.date < b.date ? 1 : -1).map(r => { const t = r.t, sub = S.data.categories[r.cat], opts = (t.type === 'income' ? ATYPE_INC : ATYPE_EXP);
+        return `<div class="row" style="background:var(--bg)"><span class="mid" onclick="${t.plan ? '' : `openAdd('${t.id}')`}" style="cursor:pointer"><b style="font-weight:500">${esc([t.store, sub?.name, t.note && t.note.split('\n')[0]].filter(Boolean).join('・') || '—')}</b><small>${md(r.date)}${r.k !== undefined ? ` 第 ${r.k + 1} 期` : ''}${t.atype ? '・單筆指定' : ''}</small></span>
+          <span class="amt" style="margin-right:6px">${twd(r.amt)}</span>${t.plan || !S.data.txns[t.id] ? '' : `<select style="border:1px solid var(--line);border-radius:8px;padding:4px;background:var(--card);font-size:12px;max-width:96px" onchange="anaSetT('${t.id}',this.value)"><option value="">依分類</option>${opts.map(k => `<option value="${k}" ${t.atype === k ? 'selected' : ''}>${ATYPE[k]}</option>`).join('')}</select>`}</div>`; }).join('') : ''}`; }).join('');
+  return `<div class="lin"><div class="lhd"><button class="ib" onclick="closeLayer('anac')">${ic('left',24)}</button><h2>${esc(c?.name || '未分類')}・${ATYPE[ANX.ty] || ''}</h2><span style="width:40px"></span></div><div class="fscroll">${subHtml}
+    <div class="sec"><h3>每月${ANX.sub ? '・' + esc(S.data.categories[ANX.sub]?.name || '') : ''}</h3></div>
+    <div class="list">${body || '<div class="empty">沒有資料</div>'}</div><div class="hint">點月份看每一筆；右邊可以把單筆改成別的類型（例：飲食裡一筆請客改成一次性）。</div><div style="height:30px"></div></div></div>`;
+}
+let ANT = {open:null, io:'expense'};
+function openAnaType(){ openLayer('anat', renderAnaType, 'full'); }
+function anaCT(id, v){ const m = {...(S.settings.catType || {})}; if (v) m[id] = v; else delete m[id]; putSettings({catType:m}); redraw('anat'); redraw('ana'); }
+function renderAnaType(){
+  const C = Object.values(S.data.categories), io = ANT.io, opts = io === 'income' ? ATYPE_INC : ATYPE_EXP, m = S.settings.catType || {};
+  const sel = (id, val, defLabel) => `<select style="border:1px solid var(--line);border-radius:8px;padding:5px;background:var(--bg);font-size:13px;max-width:130px" onchange="anaCT('${id}',this.value)"><option value="">${defLabel}</option>${opts.map(k => `<option value="${k}" ${val === k ? 'selected' : ''}>${ATYPE[k]}</option>`).join('')}</select>`;
+  const mains = C.filter(c => c.type === io && !c.parent && !c.hidden).sort(byOrder);
+  const rows = mains.map(c => { const subs = C.filter(s => s.parent === c.id && !s.hidden).sort(byOrder), open = ANT.open === c.id, cur = catType(c.id);
+    return `<div class="row"><span class="mid" onclick="ANT.open=ANT.open==='${c.id}'?null:'${c.id}';redraw('anat')" style="cursor:pointer"><b>${esc(c.name)}</b><small>${subs.length ? `${subs.length} 個子分類 ${open ? '⌃' : '›'}` : ''}</small></span>${sel(c.id, m[c.id], `預設：${ATYPE[catTypeDef(c.id)]}`)}</div>
+      ${open ? subs.map(s => `<div class="row" style="background:var(--bg);padding-left:28px"><span class="mid"><b style="font-weight:500">${esc(s.name)}</b><small>目前：${ATYPE[catType(s.id)]}</small></span>${sel(s.id, m[s.id], '同主分類')}</div>`).join('') : ''}`; }).join('');
+  return `<div class="lin"><div class="lhd"><button class="ib" onclick="closeLayer('anat')">${ic('left',24)}</button><h2>分類類型設定</h2><span style="width:40px"></span></div><div class="fscroll">
+    <div class="segw"><div class="seg"><button class="${io === 'expense' ? 'on' : ''}" onclick="ANT.io='expense';ANT.open=null;redraw('anat')">支出</button><button class="${io === 'income' ? 'on' : ''}" onclick="ANT.io='income';ANT.open=null;redraw('anat')">收入</button></div></div>
+    <div class="list">${rows}</div>
+    <div class="hint">主分類設好，子分類跟著；點主分類可個別設定子分類。預設：名稱有「代墊」＝代墊／轉手；設定 → 固定支出分類＝固定；收入「薪」＝經常收入、「回饋」＝不計、「退款」＝扣生活費，其他＝非經常收入。生活類單筆 ${nf(bigMin())} 以上自動算一次性。</div><div style="height:30px"></div></div></div>`;
+}
+
+/* V3.17 代墊逐筆：全部期間；收回依「對應哪筆」，沒指定的先到先抵 */
+function passLedger(){
+  const c = compute(), outs = [], ins = [];
+  for (const t of c.list) { if (t.type !== 'expense' && t.type !== 'income') continue; if (etype(t, t.catId) !== 'pass') continue;
+    const w = c.tw[t.id], v = w ? w.amt + w.fee : t.amount; (t.type === 'expense' ? outs : ins).push({t, v, got:0, left:v}); }
+  const byId = Object.fromEntries(outs.map(x => [x.t.id, x])); let extra = 0;
+  const give = (x, amt) => { const u = Math.min(x.left, amt); x.got += u; x.left -= u; return amt - u; };
+  for (const i of ins) { i.rest = i.v; const tg = i.t.passFor && byId[i.t.passFor]; if (tg) i.rest = give(tg, i.rest); }
+  for (const i of ins) { for (const o of outs) { if (i.rest < 0.5) break; if (o.t.date <= i.t.date) i.rest = give(o, i.rest); } }   // 先抵收回日以前、最早的
+  for (const i of ins) { for (const o of outs) { if (i.rest < 0.5) break; i.rest = give(o, i.rest); } extra += i.rest; }
+  return {outs, ins, extra, outT:outs.reduce((s, x) => s + x.v, 0), inT:ins.reduce((s, x) => s + x.v, 0)};
+}
+let PSO = false;
+function openPass(){ PSO = false; openLayer('anap', renderPass, 'full'); }
+function passLink(iid, oid){ const t = S.data.txns[iid]; if (!t) return; const x = {...t}; if (oid) x.passFor = oid; else delete x.passFor; put('txns', x, true); redraw('anap'); redraw('ana'); }
+function renderPass(){
+  const L = passLedger(), desc = t => esc([t.store, S.data.categories[t.catId]?.name, t.note && t.note.split('\n')[0]].filter(Boolean).join('・') || '—');
+  const open = L.outs.filter(x => x.left >= 1).reverse(), done = L.outs.filter(x => x.left < 1).reverse();
+  const oRow = x => `<button class="row" onclick="openAdd('${x.t.id}')"><span class="mid"><b>${desc(x.t)}</b><small>${x.t.date.replace(/-/g, '/')}・付出 ${twd(x.v)}${x.got >= 1 ? `・已收 ${twd(x.got)}` : ''}</small></span><span class="amt ${x.left >= 1 ? 'exp' : 'inc'}">${x.left >= 1 ? twd(x.left) : '✓'}<small>${x.left >= 1 ? '還沒收回' : '已收回'}</small></span></button>`;
+  const iRow = i => `<div class="row"><span class="mid"><b>${desc(i.t)}</b><small>${i.t.date.replace(/-/g, '/')}・收回 ${twd(i.v)}${i.rest >= 1 ? `・多收 ${twd(i.rest)}` : ''}</small></span>
+    <select style="border:1px solid var(--line);border-radius:8px;padding:4px;background:var(--bg);font-size:12px;max-width:150px" onchange="passLink('${i.t.id}',this.value)"><option value="">自動（先到先抵）</option>${L.outs.slice().reverse().map(o => `<option value="${o.t.id}" ${i.t.passFor === o.t.id ? 'selected' : ''}>${md(o.t.date)} ${twd(o.v)}</option>`).join('')}</select></div>`;
+  return `<div class="lin"><div class="lhd"><button class="ib" onclick="closeLayer('anap')">${ic('left',24)}</button><h2>代墊明細</h2><span style="width:40px"></span></div><div class="fscroll">
+    <div class="card mt0"><div class="kv"><div><small>付出</small><b>${twd(L.outT)}</b></div><div><small>收回</small><b>${twd(L.inT)}</b></div></div><div class="sm ${open.length ? 'exp' : 'tx2'}" style="margin-top:4px">${open.length ? `還沒收回 ${open.length} 筆，共 ${twd(open.reduce((s, x) => s + x.left, 0))}` : '已全部收回'}</div></div>
+    <div class="sec"><h3>還沒收回</h3></div><div class="list">${open.map(oRow).join('') || '<div class="empty" style="padding:14px">沒有 👍</div>'}</div>
+    <div class="sec"><h3>收回紀錄</h3><span class="sm tx2">可指定抵哪一筆</span></div><div class="list">${L.ins.slice().reverse().map(iRow).join('') || '<div class="empty" style="padding:14px">沒有</div>'}</div>
+    ${done.length ? `<div class="sec tap" onclick="PSO=!PSO;redraw('anap')"><h3>已收回 ${done.length} 筆 ${PSO ? '⌃' : '›'}</h3></div>${PSO ? `<div class="list">${done.map(oRow).join('')}</div>` : ''}` : ''}
+    <div class="hint">代墊＝類型是「代墊／轉手」的支出與收入（名稱有「代墊」的分類自動算）。收回沒指定時，先抵最早還沒收回的那筆。自己吸收不收回的，到分類明細把那筆改成「生活」或「一次性」。</div><div style="height:30px"></div></div></div>`;
+}
+/* V3.17 中位數設成預算：生活＋固定類，每個主分類近幾個月中位數（無條件進位到百） */
+function anaBudget(){
+  const d = anData(), per = {};
+  for (const x of d.cats) if (x.io === 'expense' && (x.ty === 'life' || x.ty === 'fixed')) { const v = d.ms.map(m => x.m[m] || 0); per[x.id] = (per[x.id] || []).length ? per[x.id].map((a, i) => a + v[i]) : v; }
+  const list = Object.entries(per).map(([id, v]) => [id, Math.ceil(med(v) / 100) * 100]).filter(([, v]) => v > 0);
+  if (!list.length) return toast('沒有可設定的分類');
+  const txt = list.map(([id, v]) => `${S.data.categories[id]?.name || id}：${nf(v)}`).join('\n');
+  if (!confirm(`把下面各分類的每月預算設成近 ${d.ms.length} 個月中位數（生活＋固定，不含一次性）：\n\n${txt}\n\n其他分類的預算不動；總預算${(S.settings.budget || {}).total ? '不動' : '設成合計'}。`)) return;
+  const old = S.settings.budget || {}, cats = {...(old.cats || {})}; for (const [id, v] of list) cats[id] = v;
+  const n = new Date(); putSettings({budget:{...old, cats, total:old.total || list.reduce((s, [, v]) => s + v, 0), carry:old.carry !== undefined ? old.carry : false, since:old.since || mKey(n.getFullYear(), n.getMonth())}});
+  toast('已設成預算，可到 報表 → 預算 調整');
 }
 /* V3.13 信用卡預繳情境：純記憶體試算，不寫入帳務或設定。 */
 let PP = {card:'', account:'', date:'', target:'current', amount:'', open:null};
