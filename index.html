@@ -395,7 +395,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'V3.19';
+const VERSION = 'V3.20';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -3133,7 +3133,7 @@ function anTableD(d, months, clickable){
     <tr><td class="b">中位數</td><td>${f0(d.salMed)}</td><td class="b">${f0(d.lifeMed)}</td><td>${f0(med(d.col('lifebig')))}</td><td>${f0(d.fixMed)}</td><td></td><td>${f0(d.saveMed)}</td></tr></table>`;
 }
 /* ---------- 主頁 ---------- */
-function openAna(){ if (P.an) Object.assign(AN, {n:P.an.n || AN.n, mode:P.an.mode || AN.mode}); openLayer('ana', renderAna, 'full'); }
+function openAna(){ ensureBizCat(); if (P.an) Object.assign(AN, {n:P.an.n || AN.n, mode:P.an.mode || AN.mode}); openLayer('ana', renderAna, 'full'); }
 function anaSetLife(v, label){ putSettings({lifeMonthly:Math.round(v), lifeLabel:label || null}); toast(`已帶入：每月 ${twd(v)}，發薪前試算會依天數換算`); for (const L of [...LAYERS]) if (/^ana/.test(L.key)) redraw(L.key); }
 function renderAna(){
   const d = anData(), f0 = v => twd(v), recent = [d.curM, ...d.ms.slice(-3).reverse()];
@@ -3303,18 +3303,27 @@ function renderAnaType(){
 }
 /* 代墊逐筆（分公務／個人）：收回依「對應哪筆」，沒指定的先抵收回日以前最早的 */
 function passLedger(grp){
-  const c = compute(), outs = [], ins = [];
+  const c = compute(), outs = [], ins = [], clr = grp ? (S.settings.passClear || {})[grp] || '' : '';
   for (const t of c.list) { if (t.type !== 'expense' && t.type !== 'income') continue; if (etype(t, t.catId) !== 'pass') continue; if (grp && passGroup(t.catId) !== grp) continue;
-    const w = c.tw[t.id], v = w ? w.amt + w.fee : t.amount; (t.type === 'expense' ? outs : ins).push({t, v, got:0, left:v}); }
+    const w = c.tw[t.id], v = w ? w.amt + w.fee : t.amount, cl = grp && clr && t.date <= clr;
+    if (t.type === 'expense') outs.push(cl ? {t, v, got:v, left:0, cl:true} : {t, v, got:0, left:v}); else ins.push({t, v, cl:!!cl}); }
   const byId = Object.fromEntries(outs.map(x => [x.t.id, x])); let extra = 0;
   const give = (x, amt) => { const u = Math.min(x.left, amt); x.got += u; x.left -= u; return amt - u; };
-  for (const i of ins) { i.rest = i.v; const tg = i.t.passFor && byId[i.t.passFor]; if (tg) i.rest = give(tg, i.rest); }
+  for (const i of ins) { i.rest = i.cl ? 0 : i.v; if (i.cl) continue; const tg = i.t.passFor && byId[i.t.passFor]; if (tg) i.rest = give(tg, i.rest); }
   for (const i of ins) { for (const o of outs) { if (i.rest < 0.5) break; if (o.t.date <= i.t.date) i.rest = give(o, i.rest); } }
   for (const i of ins) { for (const o of outs) { if (i.rest < 0.5) break; i.rest = give(o, i.rest); } extra += i.rest; }
   return {outs, ins, extra, outT:outs.reduce((s, x) => s + x.v, 0), inT:ins.reduce((s, x) => s + x.v, 0)};
 }
 let PSO = false, PSG = 'biz';
-function openPass(){ PSO = false; openLayer('anap', renderPass, 'full'); }
+function openPass(){ ensureBizCat(); PSO = false; openLayer('anap', renderPass, 'full'); }
+function passClr(v){ const m = {...(S.settings.passClear || {})}; if (v) m[PSG] = v; else delete m[PSG]; putSettings({passClear:m}); redraw('anap'); redraw('ana'); }
+/* V3.20：沒有「公務代墊回補」收入子分類就自動建立（主動收入底下） */
+function ensureBizCat(){
+  const C = S.data.categories; if (Object.values(C).some(c => c.type === 'income' && c.name === '公務代墊回補')) return;
+  const par = Object.values(C).find(c => c.type === 'income' && !c.parent && c.name === '主動收入') || Object.values(C).find(c => c.type === 'income' && !c.parent); if (!par) return;
+  const sib = Object.values(C).filter(c => c.parent === par.id).length;
+  put('categories', {id:'c_' + uid(), type:'income', name:'公務代墊回補', icon:par.icon, color:par.color, parent:par.id, order:sib, hidden:false}, true);
+}
 function passLink(iid, oid){ const t = S.data.txns[iid]; if (!t) return; const x = {...t}; if (oid) x.passFor = oid; else delete x.passFor; put('txns', x, true); redraw('anap'); redraw('ana'); }
 function renderPass(){
   const L = passLedger(PSG), LB = passLedger('biz'), LP = passLedger('per'), owe = X => X.outs.reduce((s, x) => s + x.left, 0), desc = t => esc([t.store, S.data.categories[t.catId]?.name, t.note && t.note.split('\n')[0]].filter(Boolean).join('・') || '—');
@@ -3324,7 +3333,9 @@ function renderPass(){
     <select style="border:1px solid var(--line);border-radius:8px;padding:4px;background:var(--bg);font-size:12px;max-width:150px" onchange="passLink('${i.t.id}',this.value)"><option value="">自動（先到先抵）</option>${L.outs.slice().reverse().map(o => `<option value="${o.t.id}" ${i.t.passFor === o.t.id ? 'selected' : ''}>${md(o.t.date)} ${twd(o.v)}</option>`).join('')}</select></div>`;
   return `<div class="lin">${subHead('anap', '代墊明細')}<div class="fscroll">
     <div class="segw"><div class="seg"><button class="${PSG === 'biz' ? 'on' : ''}" onclick="PSG='biz';redraw('anap')">公務代墊（還欠 ${twd(owe(LB))}）</button><button class="${PSG === 'per' ? 'on' : ''}" onclick="PSG='per';redraw('anap')">個人（還欠 ${twd(owe(LP))}）</button></div></div>
-    <div class="card"><div class="kv"><div><small>付出</small><b>${twd(L.outT)}</b></div><div><small>收回</small><b>${twd(L.inT)}</b></div></div><div class="sm ${open.length ? 'exp' : 'tx2'}" style="margin-top:4px">${open.length ? `還沒收回 ${open.length} 筆，共 ${twd(owe(L))}` : '已全部收回'}${L.extra >= 1 ? `・多收 ${twd(L.extra)}` : ''}</div></div>
+    <div class="card"><div class="kv"><div><small>付出</small><b>${twd(L.outT)}</b></div><div><small>收回</small><b>${twd(L.inT)}</b></div></div><div class="sm ${open.length ? 'exp' : 'tx2'}" style="margin-top:4px">${open.length ? `還沒收回 ${open.length} 筆，共 ${twd(owe(L))}` : '已全部收回'}${L.extra >= 1 ? `・多收 ${twd(L.extra)}` : ''}</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"><span class="sm">這天以前的都算已收回</span><input type="date" value="${(S.settings.passClear || {})[PSG] || ''}" onchange="passClr(this.value)" style="border:1px solid var(--line);border-radius:8px;padding:5px;background:var(--bg);font:inherit">${(S.settings.passClear || {})[PSG] ? `<button class="sm" style="color:var(--acc)" onclick="passClr('')">清除</button>` : ''}</div>
+      <div class="sm tx2" style="margin-top:2px">${PSG === 'biz' ? '公務' : '個人'}組各自設定；之後的照常配對</div></div>
     <div class="sec"><h3>還沒收回</h3></div><div class="list">${open.map(oRow).join('') || '<div class="empty" style="padding:14px">沒有 👍</div>'}</div>
     <div class="sec"><h3>收回紀錄</h3><span class="sm tx2">可指定抵哪一筆</span></div><div class="list">${L.ins.slice().reverse().map(iRow).join('') || '<div class="empty" style="padding:14px">沒有</div>'}</div>
     ${done.length ? `<div class="sec tap" onclick="PSO=!PSO;redraw('anap')"><h3>已收回 ${done.length} 筆 ${PSO ? '⌃' : '›'}</h3></div>${PSO ? `<div class="list">${done.map(oRow).join('')}</div>` : ''}` : ''}
