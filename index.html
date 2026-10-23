@@ -395,7 +395,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'V3.26';
+const VERSION = 'V3.27';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -1071,7 +1071,7 @@ function viewHome(){
       <div class="tap" onclick="goRp('trend','month',${y},${m})"><small>本月結餘 ›</small><b class="${ms.inc - ms.exp < 0 ? 'exp' : ''}">${twd(ms.inc - ms.exp)}</b></div></div>
       ${(() => { const v = availNow(), np = nextPayday(), dl = np ? Math.max(1, diffD(np, td)) : 0;
         return `<div class="avl tap" onclick="go('accounts')"><div class="l1"><span class="tx2">手上可動用 ›</span><b class="${v.avail < 0 ? 'exp' : ''}">${twd(v.avail)}</b></div>
-          ${np ? `<div class="sm tx2" onclick="event.stopPropagation();openBP()"><span style="text-decoration:underline dotted" onclick="event.stopPropagation();setPayOv()">到 ${md(np)}</span> 每天可花 <b style="color:var(--tx)">${twd(Math.max(0, v.avail) / dl)}</b> ›</div>` : ''}</div>`; })()}
+          ${np ? `<div class="sm tx2" onclick="event.stopPropagation();openBP()"><span style="text-decoration:underline dotted" onclick="event.stopPropagation();setPayOv()">到 ${md(np)}</span> 每天可花 <b style="color:var(--tx)">${twd(Math.max(0, v.avail) / dl)}</b> ›<span style="margin-left:10px;color:var(--acc)" onclick="event.stopPropagation();openBP();BP.mode='mon';redraw('bp')">下個月 ›</span></div>` : ''}</div>`; })()}
       ${bud && bud.total ? (() => { const T = bud.total;
         return `<div class="bref tap" onclick="goRp('budget','month',${y},${m})">預算參考：${T.remain >= 0 ? `還剩 ${twd(T.remain)}` : `超出 ${twd(-T.remain)}`}（已用 ${Math.round(T.pct * 100)}%）›</div>`; })() : ''}</div>
     ${goalHome()}<div class="per">${perCell('本週', wsum, `openRange('${ws}','${addD(ws, 6)}')`, wPrev.exp && wNow.exp ? cmpTxt(pct(wNow.exp, wPrev.exp), '比上週') : '')}${perCell(`${m+1}月`, ms, `goRp('trend','month',${y},${m})`, mPrev.exp && mNow.exp ? cmpTxt(pct(mNow.exp, mPrev.exp), '比上月') : '')}${perCell(`${y}年`, ysum, `goRp('trend','year',${y},${m})`)}</div>
@@ -1179,7 +1179,7 @@ function viewAcct(){
       <button class="ib" onclick="openAcctForm('${a.id}')">${ic('edit',22)}</button></div>
     ${ci ? '' : `<div class="card tap" onclick="openAcctForm('${a.id}')"><small class="tx2">${TYPES[a.type]?.[0] || ''} · ${a.currency}${a.archived ? ' · 已封存' : ''} · 校正餘額 ›</small>
       <div style="font-size:30px;font-weight:800;margin-top:4px" class="${b < 0 ? 'exp' : ''}">${fmt(b, a.currency)}</div>
-      ${a.currency !== 'TWD' ? `<small class="tx2">≈ ${twd(b * rate(a.currency))}</small>` : ''}</div>`}
+      ${a.currency !== 'TWD' ? `<small class="tx2">≈ ${twd(b * rate(a.currency))}</small>` : ''}</div><div style="margin:0 16px 12px"><button class="btn sec2" style="padding:10px" onclick="openPay(null,'${a.id}')">本月花了什麼 ›</button></div>`}
     ${info}
     ${a.type === 'credit' ? instSection(a, ci) : ''}
     <div class="rbar" style="margin-top:14px"><h3 style="margin:0 4px;font-size:15px">明細</h3><div class="nav2"><button onclick="amShift(-1)">${ic('left',20)}</button><span class="ymt" onclick="openYM('am')">${ay} 年 ${amn + 1} 月 ▾</span><button onclick="amShift(1)">${ic('right',20)}</button></div></div>
@@ -2624,6 +2624,7 @@ function renderWish(){
       ${false ? `<div class="card"><div class="sec" style="margin:0 0 4px;padding:0"><h3>分期壓力試算</h3><span class="sm tx2">未來 12 個月・點月份看數字</span></div>
         ${multiLine(ms.map(([, m]) => (m + 1) + '月'), [{k:'a', vals:after, color:'var(--exp)'}, {k:'b', vals:sum, color:'var(--tx2)', dash:1}], WSEL, 'wishPick')}
         <div class="lg2"><button><i style="background:var(--exp)"></i>加上待購</button><button><i style="background:var(--tx2)"></i>現有分期</button></div>${sel}</div>` : ''}
+      <div class="list" style="margin-top:12px"><button class="row" onclick="openBPAt((ptW().filter(w => !w.off && w.ym && !ptPast(w)).map(w => w.ym + '-01').sort()[0]) || '')">${ic('wallet',20)}<span class="mid"><b>能花多少（含待購）</b><small>有設月份的待購會算進那個月</small></span>${ic('right',16)}</button></div>
       <div class="sec"><h3>清單</h3><span class="sm tx2">勾選的才算進試算</span></div><div class="list">${ws.map(row).join('')}</div>
       <div class="hint">只是試算，不會記帳。買了或不買了，點進去刪掉就好。一次付用信用卡的，錢在下個月繳卡費時才扣。</div>`
     : `<div class="empty" style="padding:24px 20px">還沒有待購項目<br><button class="btn" style="margin-top:14px" onclick="openWishForm()">＋ 新增待購</button></div>`}
@@ -2769,7 +2770,7 @@ function renderWishForm(){
     ${inst ? `<div class="two"><div class="fld"><label>期數</label><select onchange="wishN(this.value)">${[...new Set([...INST_OPTS, +f.n])].sort((x, y) => x - y).map(n => `<option value="${n}" ${+f.n === n ? 'selected' : ''}>${n} 期</option>`).join('')}<option value="custom">自訂期數…</option></select></div>
       <div class="fld"><label>年利率 %（可空）</label><input inputmode="decimal" value="${esc(f.apr)}" placeholder="0" oninput="WF.apr=this.value" onchange="redraw('wishf')"></div></div>` : ''}
     ${p ? `<div class="hint" style="margin:0 0 12px">${p.n > 1 ? `每期 <b>${twd(p.per)}</b>${p.first !== p.per ? `（首期 ${twd(p.first)}）` : ''}・共 ${twd(p.total)}・利息 ${twd(p.fee)}` : `一次付 ${twd(p.total)}`}</div>` : ''}
-    <button class="btn" onclick="saveWish()">儲存</button>${f.id ? '<button class="btn del" style="margin-top:6px" onclick="delWish()">刪除</button>' : ''}`;
+    ${f.id && f.ym ? `<button class="btn sec2" style="margin-bottom:8px" onclick="(()=>{const w=ptW().find(x=>x.id==='${f.id}'),a=w&&S.data.accounts[w.aid];openBPAt(a&&a.type==='credit'?(ptPieces(w,a)[0]||{}).date||'':(w?w.ym+'-01':''))})()">買了那段能花多少 ›</button>` : ''}<button class="btn" onclick="saveWish()">儲存</button>${f.id ? '<button class="btn del" style="margin-top:6px" onclick="delWish()">刪除</button>' : ''}`;
   return sheet('wishf', f.id ? '編輯待購' : '新增待購', body);
 }
 function saveWish(){
@@ -2914,7 +2915,7 @@ function bpDefaultTo(){
 function openBP(cardId){
   const cards = ptAccs().filter(a => a.type === 'credit' && cardInfo(a));
   const c = cards.find(a => a.id === cardId) || cards[0] || {}, A = S.data.accounts;
-  BP = {mode:'now', mk:0, dup:false, to:bpDefaultTo(), scope:'', card:c.id || '', preAid:c.payAcct && A[c.payAcct] && A[c.payAcct].type !== 'credit' ? c.payAcct : (bpCashAccs().find(spendable) || {}).id || '', pre:'', off:new Set(), ov:{}, avail:'', add:{in:{n:'', a:'', d:'', aid:''}, out:{n:'', a:'', d:'', aid:''}}};
+  BP = {mode:'now', mk:0, dup:false, onS:new Set(), to:bpDefaultTo(), scope:'', card:c.id || '', preAid:c.payAcct && A[c.payAcct] && A[c.payAcct].type !== 'credit' ? c.payAcct : (bpCashAccs().find(spendable) || {}).id || '', pre:'', off:new Set(), ov:{}, avail:'', add:{in:{n:'', a:'', d:'', aid:''}, out:{n:'', a:'', d:'', aid:''}}};
   openLayer('bp', renderBP, 'full');
 }
 function bpNum(v){ const n = parseFloat(String(v ?? '').replace(/,/g, '')); return isNaN(n) ? null : n; }
@@ -2945,11 +2946,13 @@ function bpData(){
     if (r.active === false) continue; const h = new Set(r.handled || []);
     for (const d of ruleDates(r, addD(to, -1))) { if (d <= (r.base || '') || h.has(d) || d >= to || (mon && d < from)) continue;
       const nm = ruleName(r) + (d < td ? '（待確認）' : ''), key = 'r_' + r.id + '_' + d;
-      if (r.type === 'expense' && cashA(r.accountId)) outs.push({key, name:nm, date:d, amt:r.amount, aid:r.accountId, src:'固定收支', g:'fix'});
-      else if (r.type === 'income' && cashA(r.accountId)) ins.push({key, name:nm, date:d, amt:r.amount, aid:r.accountId, src:'固定收支'});
+      if (r.type === 'expense' && cashA(r.accountId)) outs.push({key, name:nm, date:d, amt:r.amount, aid:r.accountId, src:'固定收支', g:'fix', go:`openRule('${r.id}')`});
+      else if (r.type === 'income' && cashA(r.accountId)) ins.push({key, name:nm, date:d, amt:r.amount, aid:r.accountId, src:'固定收支', go:`openRule('${r.id}')`});
       else if (r.type === 'transfer') { const fa = !!r.accountId && cashA(r.accountId), ta = !!r.toAccountId && cashA(r.toAccountId);
-        if (fa && !ta && A[r.toAccountId]?.type !== 'credit') outs.push({key, name:nm, date:d, amt:r.amount + (r.fee || 0), src:'固定收支', g:'fix'});
-        else if (!fa && ta) ins.push({key, name:nm, date:d, amt:r.toAmount || r.amount, src:'固定收支'}); } } }
+        if (fa && !ta && A[r.toAccountId]?.type !== 'credit') outs.push({key, name:nm, date:d, amt:r.amount + (r.fee || 0), src:'固定收支', g:'fix', go:`openRule('${r.id}')`});
+        else if (!fa && ta) ins.push({key, name:nm, date:d, amt:r.toAmount || r.amount, src:'固定收支', go:`openRule('${r.id}')`}); } } }
+  // V3.27 代墊還沒收回（預設不勾，確定會退再勾）
+  if (!mon) for (const [gk, gn] of [['biz', '公務'], ['per', '個人']]) { const v = passLedger(gk).outs.reduce((s2, x) => s2 + x.left, 0); if (v >= 1) ins.push({key:'pass_' + gk, name:`${gn}代墊待收回`, date:'', amt:Math.round(v), aid:'', src:'預設不算，確定會退再勾', def0:true, go:`openPass()`}); }
   for (const x of ptIn()) if (!x.off && cashA(x.aid)) ptExpand(x, 1, 'in').filter(o => o.date ? inWin(o.date) : !mon).forEach((o, i) => ins.push({key:'ci_' + x.id + '_' + i, name:x.name, date:o.date, amt:o.amt, aid:x.aid, src:'預計進帳'}));
   for (const x of ptOut()) if (!x.off && cashA(x.aid)) ptExpand(x, -1, 'out').filter(o => o.date ? inWin(o.date) : !mon).forEach((o, i) => outs.push({key:'co_' + x.id + '_' + i, name:x.name, date:o.date, amt:-o.amt, aid:x.aid, src:'預估支出', g:'fix'}));
   const E = ptEngine(), CR = bpCredit(E), pre = !mon && cashA(BP.preAid) ? Math.max(0, bpNum(BP.pre) || 0) : 0;
@@ -2957,13 +2960,20 @@ function bpData(){
   for (const a of ptAccs()) { if (a.type !== 'credit' || !cashA(a.payAcct || '')) continue;
     (E.card[a.id] || []).filter(o => o.kind === 'bill' && inWin(o.date)).sort((x, y) => x.date < y.date ? -1 : 1).forEach(o => {
       const key = 'cb_' + a.id + '_' + o.date + '_' + o.name, use = CR.m[key] || 0;
-      outs.push({key, name:`${a.name} ${o.name}`, date:o.date, amt:o.amt, aid:a.payAcct || '', use, src:'卡費', g:'card'}); }); }
+      outs.push({key, name:`${a.name} ${o.name}`, date:o.date, amt:o.amt, aid:a.payAcct || '', use, src:'卡費', g:'card', go:o.close ? `openStmt('${a.id}','${o.close}')` : ''}); }); }
+  // V3.27 待購：有設月份的才算；刷卡＝繳款日（分期每期一筆），帳戶付＝那個月
+  for (const w of ptW()) { if (w.off || !w.ym || ptPast(w)) continue; const a = A[w.aid]; if (!a) continue;
+    if (a.type === 'credit') { if (!cashA(a.payAcct || '')) continue; ptPieces(w, a).filter(p => inWin(p.date)).forEach(p => outs.push({key:'w_' + w.id + '_' + p.k, name:w.name + (p.n > 1 ? ` ${p.k + 1}/${p.n}` : ''), date:p.date, amt:p.amt, aid:a.payAcct || '', src:`待購・刷${a.name}`, g:'wish', go:`openWishForm('${w.id}')`})); }
+    else { const d = w.ym + '-01' > td ? w.ym + '-01' : td; if (cashA(a.id) && inWin(d)) outs.push({key:'w_' + w.id, name:w.name, date:d, amt:+w.amt || 0, aid:a.id, src:'待購', g:'wish', go:`openWishForm('${w.id}')`}); } }
+  // V3.27 存錢目標：月預估扣每月要存；現在扣本月還差的
+  for (const g of S.settings.goals || []) { const gi = goalInfo(g); if (gi.done || gi.over || (mon && from > g.date)) continue; const v = Math.round(mon ? gi.per : gi.thisLeft); if (v < 1) continue;
+    outs.push({key:'g_' + g.id + (mon ? '_' + from : ''), name:`存錢：${g.name}`, date:'', amt:v, aid:'', src:mon ? `每月要存（目標 ${twd(g.target)}・${md(g.date)} 前）` : '本月還要存', g:'goal', go:`openGoal('${g.id}')`}); }
   const lifeM = +S.settings.lifeMonthly || 0, days = Math.max(1, diffD(to, from));
   if (lifeM > 0 && !mon) outs.push({key:'life_est', name:S.settings.lifeLabel || '生活費（估）', date:'', amt:Math.round(lifeM * days / 30), aid:'', src:`每月 ${twd(lifeM)} 依天數換算・來自分析`, g:'fix'});
   for (const m of bpItems()) if ((m.date ? inWin(m.date) : !mon) && cashA(m.aid || '')) outs.push({key:'m_' + m.id, name:m.name, date:m.date || '', amt:+m.amt || 0, aid:m.aid || '', man:m, mk:'out', src:'自己填的', g:'fix'});
   for (let i = ins.length - 1; i >= 0; i--) if (ins[i].man && !cashA(ins[i].aid)) ins.splice(i, 1);
   const val = it => { const v = bpNum(BP.ov[it.key]); return v !== null ? v : it.amt; };
-  const on = it => it.man ? !it.man.off : !BP.off.has(it.key), net = it => Math.max(0, val(it) - (it.use || 0));
+  const on = it => it.man ? !it.man.off : it.def0 ? BP.onS.has(it.key) : !BP.off.has(it.key), net = it => Math.max(0, val(it) - (it.use || 0));
   const autoAvail = sc ? (compute().bal[sc] || 0) * rate(A[sc].currency) : availNow().avail, av = mon ? 0 : (bpNum(BP.avail) !== null ? bpNum(BP.avail) : autoAvail);
   const inT = ins.filter(on).reduce((s, it) => s + val(it), 0), outT = outs.filter(on).reduce((s, it) => s + net(it), 0);
   const sumG = g => outs.filter(it => on(it) && it.g === g).reduce((s, it) => s + net(it), 0);
@@ -2971,10 +2981,11 @@ function bpData(){
   const ca = A[BP.card], ci = ca && cardInfo(ca); let pl = Math.max(0, bpNum(BP.pre) || 0);
   const split = ci ? [['本期', ci.remain, ci.due], ['下期', ci.post, dueOf(ca, ci.next)], ['分期未入帳', ci.unbilled, '']].map(([n, v, due]) => { const use = Math.min(pl, v); pl -= use; return {n, v, use, due}; }) : [];
   const lifeRef = lifeM || Math.round(anData().allP75 || 0);
-  return {mon, per, from, to, ci, split, over:pl, sc, preIn:cashA(BP.preAid), td, ins, outs, val, on, net, autoAvail, av, inT, outT, cardT:sumG('card'), fixT:sumG('fix'), pre, rest, days, perDay:rest / days, unused:CR.left, lifeRef, lifeEst:Math.round(lifeRef * days / 30), dp:bpDupInfo()};
+  return {mon, per, from, to, ci, split, over:pl, sc, preIn:cashA(BP.preAid), td, ins, outs, val, on, net, autoAvail, av, inT, outT, cardT:sumG('card'), fixT:sumG('fix'), wishT:sumG('wish'), goalT:sumG('goal'), pre, rest, days, perDay:rest / days, unused:CR.left, lifeRef, lifeEst:Math.round(lifeRef * days / 30), dp:bpDupInfo()};
 }
 function bpTog(key){ if (key.startsWith('m_')) { const id = key.slice(2); putSettings({bpItems:bpItems().map(m => m.id === id ? {...m, off:!m.off} : m)}); }
   else if (key.startsWith('mi_')) { const id = key.slice(3); putSettings({bpIns:bpIns().map(m => m.id === id ? {...m, off:!m.off} : m)}); }
+  else if (key.startsWith('pass_')) { BP.onS.has(key) ? BP.onS.delete(key) : BP.onS.add(key); }
   else { BP.off.has(key) ? BP.off.delete(key) : BP.off.add(key); } bpRe(); }
 function bpSet(key, v){ if (key.startsWith('m_')) { const id = key.slice(2), n = bpNum(v); putSettings({bpItems:bpItems().map(m => m.id === id ? {...m, amt:n !== null ? n : m.amt} : m)}); }
   else if (key.startsWith('mi_')) { const id = key.slice(3), n = bpNum(v); putSettings({bpIns:bpIns().map(m => m.id === id ? {...m, amt:n !== null ? n : m.amt} : m)}); }
@@ -2987,7 +2998,7 @@ function bpDel(k, id){ if (k === 'in') putSettings({bpIns:bpIns().filter(m => m.
 const BPST = {sel:'border:1px solid var(--line);border-radius:10px;padding:7px;background:var(--bg);font:inherit;max-width:100%;min-width:0', inp:'border:1px solid var(--line);border-radius:10px;padding:7px 8px;background:var(--bg);text-align:right;width:104px;font:inherit'};
 function bpRow(r, it){ const A = S.data.accounts, on = r.on(it), v = r.val(it), {sel, inp} = BPST, accs = bpCashAccs();
   return `<div class="row" style="${on ? '' : 'opacity:.45'}"><input type="checkbox" ${on ? 'checked' : ''} onchange="bpTog('${esc(it.key)}')" style="width:22px;height:22px;accent-color:var(--acc);flex:none">
-    <span class="mid" ${it.key === 'life_est' ? 'onclick="openAna()" style="cursor:pointer"' : ''}><b>${esc(it.name)}${it.key === 'life_est' ? ' <span style="color:var(--acc)">›</span>' : ''}</b><small>${[it.date ? md(it.date) : '日期未定', it.src || '', it.aid && A[it.aid] ? A[it.aid].name : '', it.use ? `預繳抵 ${twd(it.use)}，實付 ${twd(Math.max(0, v - it.use))}` : ''].filter(Boolean).join('・')}</small></span>
+    <span class="mid" ${it.key === 'life_est' || it.go ? `onclick="${it.key === 'life_est' ? 'openAna()' : it.go}" style="cursor:pointer"` : ''}><b>${esc(it.name)}${it.key === 'life_est' || it.go ? ' <span style="color:var(--acc)">›</span>' : ''}</b><small>${[it.date ? md(it.date) : '日期未定', it.src || '', it.aid && A[it.aid] ? A[it.aid].name : '', it.use ? `預繳抵 ${twd(it.use)}，實付 ${twd(Math.max(0, v - it.use))}` : ''].filter(Boolean).join('・')}</small></span>
     ${it.sal ? `<input inputmode="numeric" style="${inp}" placeholder="薪水金額" value="${esc(S.settings.bpSal ?? '')}" onchange="putSettings({bpSal:bpNum(this.value)});bpRe()">`
       : `<input inputmode="numeric" style="${inp}" value="${esc(String(v))}" onchange="bpSet('${esc(it.key)}',this.value)">`}
     ${it.man ? `<button class="mini" onclick="bpDel('${it.mk}','${it.man.id}')">${ic('x',16)}</button>` : ''}</div>${it.sal && it === r.ins.find(x => x.sal) ? `<div class="row" style="padding-top:0"><span class="mid"><small>薪水入哪個帳戶</small></span><select style="${sel}" onchange="putSettings({bpSalAid:this.value});bpRe()"><option value="">（不指定）</option>${accs.map(a => `<option value="${a.id}" ${a.id === S.settings.bpSalAid ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div>` : ''}`; }
@@ -3010,15 +3021,15 @@ function renderBP(){
   let body;
   if (!r.mon) body = `<div class="card mt0"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center"><span class="tx2">今天 ${md(r.td)} 到</span><input type="date" value="${r.to}" min="${addD(r.td, 1)}" onchange="if(this.value){BP.to=this.value;redraw('bp')}" style="${inp};width:auto;text-align:center"><span class="tx2">前・${r.days} 天</span></div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
-      ${big('現在可動用', twd(r.av))}${big('＋ 進帳', twd(r.inT), 'inc')}${big('－ 預繳', twd(r.pre), r.pre ? 'exp' : '')}${big('－ 必繳', twd(r.outT), 'exp')}${rest}
+      ${big('現在可動用', twd(r.av))}${big('＋ 進帳', twd(r.inT), 'inc')}${big('－ 預繳', twd(r.pre), r.pre ? 'exp' : '')}${big('－ 必繳', twd(r.outT - r.wishT - r.goalT), 'exp')}${r.wishT ? big('－ 待購', twd(r.wishT), 'exp') : ''}${r.goalT ? big('－ 存錢目標', twd(r.goalT), 'exp') : ''}${rest}
       ${r.rest < 0 ? `<div class="alert warn" style="margin:10px 0 0">會不夠 ${twd(-r.rest)}，預繳少一點或延後</div>` : ''}</div></div>
-    <div class="list">${go('av', 'wallet', '現在可動用', twd(r.av), r.sc ? esc(A[r.sc].name) + ' 餘額' : '可動用帳戶合計・可改')}${go('in', 'plus', '進帳', twd(r.inT), `${nIn} 項`, 'inc')}${go('pre', 'card', '預繳信用卡', twd(r.pre), BP.card && A[BP.card] ? esc(A[BP.card].name) + '・會抵哪一期' : '選卡、金額', r.pre ? 'exp' : '')}${go('out', 'minus', '必繳', twd(r.outT), `${n()} 項・含卡費、生活費`, 'exp')}${dupRow}</div>`;
+    <div class="list">${go('av', 'wallet', '現在可動用', twd(r.av), r.sc ? esc(A[r.sc].name) + ' 餘額' : '可動用帳戶合計・可改')}${go('in', 'plus', '進帳', twd(r.inT), `${nIn} 項`, 'inc')}${go('pre', 'card', '預繳信用卡', twd(r.pre), BP.card && A[BP.card] ? esc(A[BP.card].name) + '・會抵哪一期' : '選卡、金額', r.pre ? 'exp' : '')}${go('out', 'minus', '必繳', twd(r.outT - r.wishT - r.goalT), `${n('card') + n('fix')} 項・含卡費、生活費`, 'exp')}${bpExtra(r, go, n)}${dupRow}</div>`;
   else body = `<div class="card mt0"><div style="display:flex;justify-content:center;align-items:center;gap:10px"><button ${BP.mk > 0 ? `onclick="BP.mk--;redraw('bp')"` : 'disabled style="opacity:.3"'}>${ic('left',20)}</button><b>${bpRange(r)}</b><button ${BP.mk < P.length - 1 ? `onclick="BP.mk++;redraw('bp')"` : 'disabled style="opacity:.3"'}>${ic('right',20)}</button></div>
       <div class="sm tx2" style="text-align:center">從那天的進帳算起，不看現在餘額（${r.days} 天）</div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
-      ${big('進帳（薪水等）', twd(r.inT), 'inc')}${big('－ 該繳卡費', twd(r.cardT), 'exp')}${big('－ 固定支出', twd(r.fixT), 'exp')}${rest}
-      ${r.lifeRef ? `<div class="sm" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);display:flex;justify-content:space-between"><span class="tx2">生活費通常 ${twd(r.lifeEst)}，花完還剩</span><b class="${r.rest - r.lifeEst < 0 ? 'exp' : 'inc'}">${twd(r.rest - r.lifeEst)}</b></div>` : ''}</div></div>
-    <div class="list">${go('in', 'plus', '進帳', twd(r.inT), `${nIn} 項`, 'inc')}${go('card', 'card', '該繳卡費', twd(r.cardT), `${n('card')} 筆・已扣預繳／多繳`, 'exp')}${go('fix', 'minus', '固定支出', twd(r.fixT), `${n('fix')} 項・家用等`, 'exp')}${dupRow}</div>`;
+      ${big('進帳（薪水等）', twd(r.inT), 'inc')}${big('－ 該繳卡費', twd(r.cardT), 'exp')}${big('－ 固定支出', twd(r.fixT), 'exp')}${r.wishT ? big('－ 待購', twd(r.wishT), 'exp') : ''}${r.goalT ? big('－ 存錢目標', twd(r.goalT), 'exp') : ''}${rest}
+      ${r.lifeRef ? `<div class="sm" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);display:flex;justify-content:space-between"><span class="tx2">生活費通常 ${twd(r.lifeEst)}，花完還剩</span><b class="${r.rest - r.lifeEst < 0 ? 'exp' : 'inc'}">${twd(r.rest - r.lifeEst)}</b></div>` : ''}${bpBudLine(r)}</div></div>
+    <div class="list">${go('in', 'plus', '進帳', twd(r.inT), `${nIn} 項`, 'inc')}${go('card', 'card', '該繳卡費', twd(r.cardT), `${n('card')} 筆・已扣預繳／多繳`, 'exp')}${go('fix', 'minus', '固定支出', twd(r.fixT), `${n('fix')} 項・家用等`, 'exp')}${bpExtra(r, go, n)}${dupRow}</div>`;
   return `<div class="lin"><div class="lhd"><button class="ib" onclick="closeLayer('bp')">${ic('left',24)}</button><h2>能花多少</h2><span style="width:40px"></span></div><div class="fscroll">${seg}${body}
     <div class="hint">${r.mon ? '卡費＝這段期間到期的帳單；還沒結帳的那期是「目前已刷＋分期」，之後再刷會變多。生活費不扣進「能花」，只拿來比。' : '點每一行看細項、改金額、新增。'}只是試算，不會記帳。${(S.settings.paydays || []).length ? '' : '設定 → 發薪日 填好，期間會照發薪日切。'}</div>
     <div style="height:30px"></div></div></div>`;
@@ -3027,7 +3038,7 @@ let BPK = 'in';
 function openBPD(k){ BPK = k; openLayer('bpd', renderBPD, 'full'); }
 function renderBPD(){
   const r = bpData(), A = S.data.accounts, accs = bpCashAccs(), {sel, inp} = BPST, cards = ptAccs().filter(a => a.type === 'credit' && cardInfo(a));
-  const T = {av:'現在可動用', in:'進帳', pre:'預繳信用卡', out:'必繳', card:'該繳卡費', fix:'固定支出'}[BPK], rng = r.mon ? bpRange(r) : `到 ${md(addD(r.to, -1))}`;
+  const T = {av:'現在可動用', in:'進帳', pre:'預繳信用卡', out:'必繳', card:'該繳卡費', fix:'固定支出', wish:'待購', goal:'存錢目標'}[BPK], rng = r.mon ? bpRange(r) : `到 ${md(addD(r.to, -1))}`;
   let body = '';
   if (BPK === 'av') body = `<div class="sec"><h3>算哪個帳戶</h3></div>
     <div class="list"><div class="row"><span class="mid"><small>全部＝勾「列入可動用」的帳戶合計；選一個帳戶＝只算進出這個帳戶的</small></span><select style="${sel}" onchange="BP.scope=this.value;BP.avail='';bpRe()"><option value="">全部可動用帳戶</option>${accs.map(a => `<option value="${a.id}" ${a.id === BP.scope ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div></div>
@@ -3040,12 +3051,28 @@ function renderBPD(){
       <div class="row" style="padding-top:0;display:block"><div class="sm tx2" style="margin-bottom:4px">預繳會抵哪一期（照銀行：先抵本期，再下期，再分期）</div>${r.split.map(x => `<div class="sm" style="display:flex;justify-content:space-between;gap:8px;padding:2px 0"><span>${x.n}${x.due ? `（${md(x.due)} 截止）` : ''}</span><span>${twd(x.v)} → <b class="${x.use ? 'inc' : ''}">${twd(x.v - x.use)}</b>${x.use ? `（抵 ${twd(x.use)}）` : ''}</span></div>`).join('')}${r.over >= 1 ? `<div class="sm exp">多出 ${twd(r.over)} 會變溢繳</div>` : ''}</div>` : ''}
       <div class="row" style="padding-top:0"><span class="mid"><small>從哪個帳戶繳${r.preIn ? '' : '<span class="exp">（不在目前範圍，不算進來）</span>'}</small></span><select style="${sel}" onchange="BP.preAid=this.value;bpRe()">${accs.map(a => `<option value="${a.id}" ${a.id === BP.preAid ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select></div></div>
     <div class="hint">預繳會一直抵到之後的帳單，「月預估」那邊的卡費也會跟著少。</div>`;
-  else { const L = r.outs.filter(it => BPK === 'out' || it.g === BPK);
-    body = `<div class="list">${L.map(it => bpRow(r, it)).join('') || '<div class="empty" style="padding:14px">這段期間沒有</div>'}${BPK !== 'card' ? bpAddRow('out', '新增必繳（例：房租、電話）') : ''}</div>
-    <div class="hint">${BPK === 'card' ? '只算從可動用帳戶繳的卡；已扣預繳和本期多繳的部分。' : '固定收支（例：家用每月轉出）設一次，每段都會自動帶入；這裡新增的只算填的那天。'}</div>`; }
-  const tot = {av:r.av, in:r.inT, pre:r.pre, out:r.outT, card:r.cardT, fix:r.fixT}[BPK];
+  else { const L = r.outs.filter(it => BPK === 'out' ? it.g === 'card' || it.g === 'fix' : it.g === BPK);
+    body = `<div class="list">${L.map(it => bpRow(r, it)).join('') || '<div class="empty" style="padding:14px">這段期間沒有</div>'}${BPK === 'out' || BPK === 'fix' ? bpAddRow('out', '新增必繳（例：房租、電話）') : ''}</div>${BPK === 'card' ? bpInstInfo(r) : ''}
+    <div class="hint">${{card:'只算從可動用帳戶繳的卡；已扣預繳和本期多繳的部分。點名稱看那期帳單。', wish:'待購清單有設月份的才算；刷卡的算在繳款日。點名稱改那一項，取消勾選＝看不買的情況。', goal:'依目標金額、日期、目前進度算每月要存多少。點名稱改目標。'}[BPK] || '固定收支（例：家用每月轉出）設一次，每段都會自動帶入；這裡新增的只算填的那天。點名稱改那條固定收支。'}</div>`; }
+  const tot = {av:r.av, in:r.inT, pre:r.pre, out:r.outT - r.wishT - r.goalT, card:r.cardT, fix:r.fixT, wish:r.wishT, goal:r.goalT}[BPK];
   return `<div class="lin">${subHead('bpd', `${T}・${rng}`)}<div class="fscroll"><div class="card mt0"><small class="tx2">${r.mon ? '月預估' : '現在'}・${rng}</small><div style="font-size:24px;font-weight:800">${twd(tot)}</div></div>${body}<div style="height:30px"></div></div></div>`;
 }
+/* V3.27 待購、存錢目標兩行（有才出現） */
+function bpExtra(r, go, n){ return `${r.outs.some(it => it.g === 'wish') ? go('wish', 'cart', '待購', twd(r.wishT), `${n('wish')} 筆・待購清單有設月份的`, r.wishT ? 'exp' : '') : ''}${r.outs.some(it => it.g === 'goal') ? go('goal', 'target', '存錢目標', twd(r.goalT), `${n('goal')} 個目標`, r.goalT ? 'exp' : '') : ''}`; }
+/* 月預估 vs 預算 */
+function bpBudLine(r){ const B = S.settings.budget; if (!hasBudget() || !B || !(+B.total > 0)) return ''; const d = r.rest - B.total;
+  return `<div class="sm" style="margin-top:6px;display:flex;justify-content:space-between"><span class="tx2 tap" onclick="openBudgetEdit()">每月預算 ${twd(B.total)} ›</span><span class="${d < 0 ? 'exp' : 'inc'}">${d < 0 ? '比能花多 ' + twd(-d) : '能花還多 ' + twd(d)}</span></div>`; }
+/* 卡費子層：分期還要繳多久 */
+function bpInstInfo(r){ const A = S.data.accounts, td = today(), L = [];
+  for (const t of compute().list) { if (t.type !== 'expense' || !(t.inst && t.inst.n > 1)) continue; const a = A[t.accountId]; if (!a || a.type !== 'credit') continue;
+    const ps = instPieces(t).filter(p => !p.payoff && p.date > td); if (!ps.length) continue; const last = ps[ps.length - 1];
+    L.push({a, t, n:ps.length, per:last.amt + (last.fee || 0), end:dueOf(a, closeOf(a, last.date))}); }
+  if (!L.length) return ''; L.sort((x, y) => x.end < y.end ? -1 : 1);
+  return `<div class="sec"><h3>分期還要繳多久</h3></div><div class="list">${L.map(x => `<button class="row" onclick="openAdd('${x.t.id}')"><span class="mid"><b>${esc(x.t.store || x.t.note?.split('\n')[0] || S.data.categories[x.t.catId]?.name || '分期')}</b><small>${esc(x.a.name)}・每期約 ${twd(x.per)}・還剩 ${x.n} 期</small></span><span class="amt">${x.end.slice(0, 7).replace('-', '/')}<small>繳到</small></span></button>`).join('')}</div>`; }
+/* 用指定日期開：在下次發薪前＝現在，之後＝月預估切到那段 */
+function openBPAt(d){ openBP(); const P = bpPeriods(), i = P.findIndex(([f, t]) => d >= f && d < t); if (d && i >= 0) { BP.mode = 'mon'; BP.mk = i; } redraw('bp'); }
+/* 不動目前畫面，算某一段月預估（給預算設定、複製給 Claude 用） */
+function bpPeek(k){ const keep = BP; BP = {mode:'mon', mk:k || 0, dup:false, onS:new Set(), to:'', scope:'', card:'', preAid:'', pre:'', off:new Set(), ov:{}, avail:'', add:{in:{}, out:{}}}; try { return bpData(); } finally { BP = keep; } }
 /* V3.18 生活費・分類分析：只讀分析，不改金額；類型設定存 S.settings.catType，代墊組別 S.settings.passGrp，單筆覆寫存在紀錄的 atype／passFor */
 const ATYPE = {life:'日常生活', lifebig:'大額生活', fixed:'固定', oneoff:'一次性', pass:'代墊／轉手', ignore:'不計', salary:'經常收入', extra:'非經常收入', refund:'退款（扣生活費）', '*':'全部支出'};
 const ATYPE_EXP = ['life', 'lifebig', 'fixed', 'oneoff', 'pass', 'ignore'], ATYPE_INC = ['salary', 'extra', 'refund', 'pass', 'ignore'];
@@ -3213,6 +3240,8 @@ function anaCopy(){
   for (const [g, n] of [['biz', '公務代墊'], ['per', '個人代墊']]) { const P2 = passLedger(g); L.push(`${n}：付出 ${nf(Math.round(P2.outT))}、收回 ${nf(Math.round(P2.inT))}、還沒收回 ${nf(Math.round(P2.outs.reduce((s, x) => s + x.left, 0)))}`); }
   L.push('各分類（每月中位數／平均／起伏）：');
   for (const x of d.cats.filter(x => x.io === 'expense' && x.ty !== 'pass').slice(0, 30)) L.push(`- [${ATYPE[x.ty] || x.ty}] ${S.data.categories[x.id]?.name || '未分類'}：${nf(Math.round(x.med))}／${nf(Math.round(x.avg))}／±${nf(Math.round(x.sd))}`);
+  try { const P = bpPeriods(); if (P.length) { L.push('接下來每段能花（月預估：進帳－該繳卡費－固定支出－待購－存錢目標，生活費不扣）：');   // V3.27
+    for (let k = 0; k < Math.min(3, P.length); k++) { const r = bpPeek(k); L.push(`- ${r.from}～${addD(r.to, -1)}：進帳 ${nf(Math.round(r.inT))}、卡費 ${nf(Math.round(r.cardT))}、固定 ${nf(Math.round(r.fixT))}${r.wishT ? `、待購 ${nf(Math.round(r.wishT))}` : ''}${r.goalT ? `、存錢 ${nf(Math.round(r.goalT))}` : ''} → 能花 ${nf(Math.round(r.rest))}`); } } } catch (e) {}
   L.push('請幫我分析生活費結構、哪些可以省、每月建議預算。');
   const txt = L.join('\n');
   (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('已複製，貼給 Claude 就可以')).catch(() => { prompt('複製下面文字', txt); });
@@ -4360,7 +4389,7 @@ function openBudgetEdit(){ const B = S.settings.budget || {}; BE = {total:B.tota
 function renderBudgetEdit(){
   const mains = Object.values(S.data.categories).filter(c => c.type === 'expense' && !c.parent && !c.hidden).sort(byOrder);
   const avg = id => { const n = new Date(); let s = 0; for (let i = 1; i <= 3; i++) { const d = new Date(n.getFullYear(), n.getMonth() - i, 1); s += spentOf(d.getFullYear(), d.getMonth())[id] || 0; } return s / 3; };
-  const body = `<div class="fld"><label>每月總預算（台幣，留空＝不設）<span style="float:right">近 3 月平均 ${twd(avg('_t'))}</span></label><input inputmode="numeric" value="${esc(BE.total)}" oninput="BE.total=this.value"></div>
+  const body = `<div class="fld"><label>每月總預算（台幣，留空＝不設）<span style="float:right">近 3 月平均 ${twd(avg('_t'))}${(() => { try { return '・月預估能花 ' + twd(bpPeek(0).rest); } catch (e) { return ''; } })()}</span></label><input inputmode="numeric" value="${esc(BE.total)}" oninput="BE.total=this.value"></div>
     <div class="tog"><span>沒花完累積到下個月<br><small class="tx2">超支也會從下個月扣</small></span><input type="checkbox" ${BE.carry ? 'checked' : ''} onchange="BE.carry=this.checked"></div>
     <div class="tog"><span>一次性不算進預算<br><small class="tx2">分析頁類型是「一次性」的不算（代墊、不計本來就不算）</small></span><input type="checkbox" ${BE.exOneoff ? 'checked' : ''} onchange="BE.exOneoff=this.checked"></div>
     <div class="fld" style="margin-top:10px"><label>分類預算（留空＝不設）</label>
