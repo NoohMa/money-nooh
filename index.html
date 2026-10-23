@@ -395,7 +395,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'V3.21';
+const VERSION = 'V3.22';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -3312,7 +3312,7 @@ function renderAnaType(){
 }
 /* 代墊逐筆（分公務／個人）：收回依「對應哪筆」，沒指定的先抵收回日以前最早的 */
 function passLedger(grp){
-  const c = compute(), outs = [], ins = [], clr = grp ? (S.settings.passClear || {})[grp] || (grp === 'biz' ? '2026-09-30' : '') : '';   // V3.21：公務 9/30 以前一律算已收回（一次性整理）
+  const c = compute(), outs = [], ins = [], clr = passClrDate(grp);   // V3.21：公務 9/30 以前一律算已收回（一次性整理）
   for (const t of c.list) { if (t.type !== 'expense' && t.type !== 'income') continue; if (etype(t, t.catId) !== 'pass') continue; if (grp && passGroup(t.catId) !== grp) continue;
     const w = c.tw[t.id], v = w ? w.amt + w.fee : t.amount, cl = grp && clr && t.date <= clr;
     if (t.type === 'expense') outs.push(cl ? {t, v, got:v, left:0, cl:true} : {t, v, got:0, left:v}); else ins.push({t, v, cl:!!cl}); }
@@ -3323,6 +3323,7 @@ function passLedger(grp){
   for (const i of ins) { for (const o of outs) { if (i.rest < 0.5) break; i.rest = give(o, i.rest); } extra += i.rest; }
   return {outs, ins, extra, outT:outs.reduce((s, x) => s + x.v, 0), inT:ins.reduce((s, x) => s + x.v, 0)};
 }
+function passClrDate(grp){ return grp ? (S.settings.passClear || {})[grp] || (grp === 'biz' ? '2026-09-30' : '') : ''; }
 let PSO = false, PSG = 'biz';
 function openPass(){ ensureBizCat(); PSO = false; openLayer('anap', renderPass, 'full'); }
 function passClr(v){ const m = {...(S.settings.passClear || {})}; if (v) m[PSG] = v; else delete m[PSG]; putSettings({passClear:m}); redraw('anap'); redraw('ana'); }
@@ -3339,14 +3340,24 @@ function renderPass(){
   const open = L.outs.filter(x => x.left >= 1).reverse(), done = L.outs.filter(x => x.left < 1).reverse();
   const oRow = x => `<button class="row" onclick="openAdd('${x.t.id}')"><span class="mid"><b>${desc(x.t)}</b><small>${x.t.date.replace(/-/g, '/')}・付出 ${twd(x.v)}${x.got >= 1 ? `・已收 ${twd(x.got)}` : ''}</small></span><span class="amt ${x.left >= 1 ? 'exp' : 'inc'}">${x.left >= 1 ? twd(x.left) : '✓'}<small>${x.left >= 1 ? '還沒收回' : '已收回'}</small></span></button>`;
   const iRow = i => `<div class="row"><span class="mid"><b>${desc(i.t)}</b><small>${i.t.date.replace(/-/g, '/')}・收回 ${twd(i.v)}${i.rest >= 1 ? `・多收 ${twd(i.rest)}` : ''}</small></span>
-    <select style="border:1px solid var(--line);border-radius:8px;padding:4px;background:var(--bg);font-size:12px;max-width:150px" onchange="passLink('${i.t.id}',this.value)"><option value="">自動（先到先抵）</option>${L.outs.slice().reverse().map(o => `<option value="${o.t.id}" ${i.t.passFor === o.t.id ? 'selected' : ''}>${md(o.t.date)} ${twd(o.v)}</option>`).join('')}</select></div>`;
+    <select style="border:1px solid var(--line);border-radius:8px;padding:4px;background:var(--bg);font-size:12px;max-width:150px" onchange="passLink('${i.t.id}',this.value)"><option value="">自動（先到先抵）</option>${L.outs.filter(o => !o.cl).reverse().map(o => `<option value="${o.t.id}" ${i.t.passFor === o.t.id ? 'selected' : ''}>${md(o.t.date)} ${twd(o.v)}</option>`).join('')}</select></div>`;
+  const live = L.ins.filter(i => !i.cl), old = L.ins.filter(i => i.cl), cd = passClrDate(PSG);   // V3.22：截止日以前的收回收成一行，點進子層看
   return `<div class="lin">${subHead('anap', '代墊明細')}<div class="fscroll">
     <div class="segw"><div class="seg"><button class="${PSG === 'biz' ? 'on' : ''}" onclick="PSG='biz';redraw('anap')">公務代墊（還欠 ${twd(owe(LB))}）</button><button class="${PSG === 'per' ? 'on' : ''}" onclick="PSG='per';redraw('anap')">個人（還欠 ${twd(owe(LP))}）</button></div></div>
     <div class="card"><div class="kv"><div><small>付出</small><b>${twd(L.outT)}</b></div><div><small>收回</small><b>${twd(L.inT)}</b></div></div><div class="sm ${open.length ? 'exp' : 'tx2'}" style="margin-top:4px">${open.length ? `還沒收回 ${open.length} 筆，共 ${twd(owe(L))}` : '已全部收回'}${L.extra >= 1 ? `・多收 ${twd(L.extra)}` : ''}</div></div>
     <div class="sec"><h3>還沒收回</h3></div><div class="list">${open.map(oRow).join('') || '<div class="empty" style="padding:14px">沒有 👍</div>'}</div>
-    <div class="sec"><h3>收回紀錄</h3><span class="sm tx2">可指定抵哪一筆</span></div><div class="list">${L.ins.slice().reverse().map(iRow).join('') || '<div class="empty" style="padding:14px">沒有</div>'}</div>
+    <div class="sec"><h3>收回紀錄</h3><span class="sm tx2">可指定抵哪一筆</span></div><div class="list">${live.slice().reverse().map(iRow).join('') || '<div class="empty" style="padding:14px">沒有</div>'}${old.length ? `<button class="row" onclick="openPassOld()"><span class="mid"><b>${md(cd)} 前已整理 ${old.length} 筆</b><small>都算已抵完，不用再對</small></span><span class="amt inc">${twd(old.reduce((s, i) => s + i.v, 0))}<small>›</small></span></button>` : ''}</div>
     ${done.length ? `<div class="sec tap" onclick="PSO=!PSO;redraw('anap')"><h3>已收回 ${done.length} 筆 ${PSO ? '⌃' : '›'}</h3></div>${PSO ? `<div class="list">${done.map(oRow).join('')}</div>` : ''}` : ''}
     <div class="hint">公務＝分類名稱有「(公)」「公務」（例：高鐵(公)、公務代墊回補）；其他代墊算個人；⚙ 可逐分類改。只在同一組內配對；收回沒指定時，先抵最早還沒收回的那筆。自己吸收不收回的，把那筆改成生活或一次性。</div><div style="height:30px"></div></div></div>`;
+}
+/* V3.22：截止日以前已整理的收回（只看，不用對） */
+function openPassOld(){ openLayer('anapc', renderPassOld, 'full'); }
+function renderPassOld(){
+  const L = passLedger(PSG), old = L.ins.filter(i => i.cl).reverse(), oo = L.outs.filter(o => o.cl), cd = passClrDate(PSG), desc = t => esc([t.store, S.data.categories[t.catId]?.name, t.note && t.note.split('\n')[0]].filter(Boolean).join('・') || '—');
+  return `<div class="lin">${subHead('anapc', `${cd.replace(/-/g, '/')} 前已整理`)}<div class="fscroll">
+    <div class="card"><div class="kv"><div><small>付出 ${oo.length} 筆</small><b>${twd(oo.reduce((s, x) => s + x.v, 0))}</b></div><div><small>收回 ${old.length} 筆</small><b>${twd(old.reduce((s, i) => s + i.v, 0))}</b></div></div><div class="sm tx2" style="margin-top:4px">這天以前的都算已收回，兩邊不用一筆筆對</div></div>
+    <div class="sec"><h3>收回</h3></div><div class="list">${old.map(i => `<button class="row" onclick="openAdd('${i.t.id}')"><span class="mid"><b>${desc(i.t)}</b><small>${i.t.date.replace(/-/g, '/')}</small></span><span class="amt inc">${twd(i.v)}</span></button>`).join('')}</div>
+    <div style="height:30px"></div></div></div>`;
 }
 /* 省錢：省錢目標→預算、可省空間排行、省下多少 */
 function openAnaSave(){ openLayer('anasave', renderAnaSave, 'full'); }
