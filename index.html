@@ -400,7 +400,7 @@ const FIREBASE_CONFIG = {
   appId: "..."
 };
 */
-const VERSION = 'V3.35';
+const VERSION = 'V3.36';
 
 /* ---------- utils ---------- */
 const $ = s => document.querySelector(s);
@@ -4378,7 +4378,7 @@ async function saveFile(name, text, type, n){
   const blob = new Blob([text], {type:type + ';charset=utf-8'});
   const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   if (mobile && navigator.canShare) {
-    try { const f = new File([blob], name, {type}); if (navigator.canShare({files:[f]})) { await navigator.share({files:[f], title:name}); toast(`已匯出 ${n} 筆`); return; } }
+    try { const f = new File([blob], name, {type}); if (navigator.canShare({files:[f]})) { await navigator.share({files:[f]});   /* 只分享檔案、不帶標題：iPhone 有些去處會把標題文字存成 .txt */ toast(`已匯出 ${n} 筆`); return; } }
     catch(e) { if (e && e.name === 'AbortError') return; }
   }
   const u = URL.createObjectURL(blob), a = document.createElement('a'); a.dataset.own = '1'; a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
